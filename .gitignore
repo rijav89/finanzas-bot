@@ -1,0 +1,20 @@
+# C:\Users\rvasquez\finanzas_bot\.gitignore
+ 
+# Credenciales — NUNCA subir esto
+.env
+ 
+# Entorno virtual
+venv/
+ 
+# Archivos temporales de Python
+__pycache__/
+*.pyc
+*.pyo
+ 
+# Imágenes temporales del bot
+temp_*.jpg
+temp_*.png
+ 
+# Sistema operativo
+.DS_Store
+Thumbs.db
