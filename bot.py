@@ -1173,7 +1173,10 @@ if __name__ == "__main__":
     import asyncio
     import signal
     if sys.platform == "win32":
-        asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+        # Python 3.14+: WindowsSelectorEventLoopPolicy deprecado
+        # Usar ProactorEventLoop con manejo manual del loop
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
     else:
         # En Linux/nube: manejar SIGTERM para apagado limpio
         signal.signal(signal.SIGTERM, lambda s, f: sys.exit(0))

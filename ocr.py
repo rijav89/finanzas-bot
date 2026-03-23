@@ -1,50 +1,31 @@
 """
 ocr.py — FinanzasBot v2.3
-Usa Gemini 1.5 Flash con la librería actualizada google-genai.
-
-SETUP:
-    pip uninstall google-generativeai -y
-    pip install google-genai pillow
+Usa Gemini 1.5/2.5 Flash con Structured Outputs (Pydantic).
 """
 
 import json
 from google import genai
 from google.genai import types
-from PIL import Image
+from pydantic import BaseModel, Field
 import pathlib
 from config import GEMINI_API_KEY
 
 client = genai.Client(api_key=GEMINI_API_KEY)
 
-PROMPT = """
-Analiza esta imagen de un voucher de pago (Yape o Plin de Peru).
-Extrae los siguientes datos y responde UNICAMENTE con un JSON valido, sin texto adicional:
+class VoucherInfo(BaseModel):
+    monto: str = Field(description="Solo el numero, ej. 85.50. Si no se detecta, usa 'No detectado'. No incluyas S/.")
+    medio: str = Field(description="Yape, Plin o No identificado")
+    destinatario: str = Field(description="Nombre del destinatario o No detectado")
+    fecha: str = Field(description="Fecha de la operacion o No detectada")
 
-{
-  "monto": "solo el numero, ejemplo: 85.50",
-  "medio": "Yape o Plin o No identificado",
-  "destinatario": "nombre del destinatario o No detectado",
-  "fecha": "fecha de la operacion o No detectada"
-}
-
-Si no puedes leer algun campo con certeza, usa "No detectado".
-No incluyas el simbolo S/ en el monto.
-"""
-
+PROMPT = "Analiza esta imagen de un voucher de pago (Yape o Plin de Peru). Extrae los datos segun el esquema solicitado."
 
 def procesar_voucher(file_path: str) -> tuple[str, str, str, str]:
     """
-    Procesa un voucher usando Gemini 1.5 Flash (google-genai).
-
-    Retorna:
-        monto        (str): Ej. "85.50"
-        medio        (str): "Yape", "Plin" o "No identificado"
-        destinatario (str): Nombre del destinatario
-        fecha        (str): Fecha de la operacion
+    Procesa un voucher usando Gemini y retorna monto, medio, destinatario, fecha.
     """
     image_bytes = pathlib.Path(file_path).read_bytes()
 
-    # Detectar tipo de imagen
     suffix = pathlib.Path(file_path).suffix.lower()
     mime_map = {".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".png": "image/png"}
     mime_type = mime_map.get(suffix, "image/jpeg")
@@ -55,22 +36,25 @@ def procesar_voucher(file_path: str) -> tuple[str, str, str, str]:
             types.Part.from_bytes(data=image_bytes, mime_type=mime_type),
             PROMPT,
         ],
+        config=types.GenerateContentConfig(
+            response_mime_type="application/json",
+            response_schema=VoucherInfo,
+            temperature=0.1,
+        )
     )
 
-    texto = response.text.strip()
-
-    # Limpia posibles bloques ```json ... ```
-    if "```" in texto:
-        texto = texto.split("```")[1]
-        if texto.startswith("json"):
-            texto = texto[4:]
-        texto = texto.strip()
-
-    data = json.loads(texto)
-
-    monto        = data.get("monto", "No detectado")
-    medio        = data.get("medio", "No identificado")
-    destinatario = data.get("destinatario", "No detectado")
-    fecha        = data.get("fecha", "No detectada")
+    try:
+        # En caso el SDK retorne el objeto parseado, pero aseguramos con json manual
+        data = json.loads(response.text.strip())
+        monto = data.get("monto", "No detectado")
+        medio = data.get("medio", "No identificado")
+        destinatario = data.get("destinatario", "No detectado")
+        fecha = data.get("fecha", "No detectada")
+    except Exception:
+        # Fallback de seguridad
+        monto = "No detectado"
+        medio = "No identificado"
+        destinatario = "No detectado"
+        fecha = "No detectada"
 
     return monto, medio, destinatario, fecha

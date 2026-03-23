@@ -1,6 +1,7 @@
 python-telegram-bot[job-queue]==21.9
 google-genai
 psycopg[binary]
+psycopg_pool
 pillow
 openpyxl
 python-dotenv
