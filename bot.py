@@ -158,8 +158,8 @@ async def handle_texto(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(texto, parse_mode="Markdown", reply_markup=menu_principal())
 
     elif intencion == "VER_HISTORIAL":
-        texto = await mostrar_historial(usuario_id)
-        await update.message.reply_text(texto, parse_mode="Markdown", reply_markup=menu_principal())
+        texto, _ = await mostrar_historial(usuario_id)
+        await update.message.reply_text(texto, reply_markup=menu_principal())
 
     elif intencion == "EXPORTAR":
         buffer, total = await generar_excel(usuario_id)
@@ -469,6 +469,12 @@ async def mostrar_categorias(usuario_id):
     total = obtener_total_mes(usuario_id)
     if not filas:
         return "📭 No tienes transacciones este mes."
+
+    def esc(text):
+        for ch in ('_', '*', '`', '['):
+            text = str(text).replace(ch, f'\\{ch}')
+        return text
+
     mes_actual = datetime.now().strftime("%B %Y")
     texto = f"📊 *Resumen de {mes_actual}:*\n\n"
     for categoria, subtotal, cantidad in filas:
@@ -476,7 +482,7 @@ async def mostrar_categorias(usuario_id):
         porcentaje = (float(subtotal) / float(total) * 100) if total else 0
         barra = "█" * int(porcentaje / 10) + "░" * (10 - int(porcentaje / 10))
         texto += (
-            f"{emoji} *{categoria}*\n"
+            f"{emoji} *{esc(categoria)}*\n"
             f"   S/ {subtotal:.2f} · {cantidad} transac. · {porcentaje:.1f}%\n"
             f"   {barra}\n\n"
         )
@@ -487,8 +493,9 @@ async def mostrar_categorias(usuario_id):
 async def mostrar_historial(usuario_id):
     filas = obtener_historial(usuario_id, limite=10)
     if not filas:
-        return "📭 No tienes transacciones registradas aún."
-    texto = "📜 *Últimas 10 transacciones:*\n"
+        return "📭 No tienes transacciones registradas aún.", None
+
+    texto = "📜 Últimas 10 transacciones:\n"
     texto += "─────────────────────\n\n"
     for i, (monto, medio, descripcion, categoria, destinatario, fecha) in enumerate(filas, 1):
         emoji = EMOJIS_CATEGORIA.get(categoria, "📦")
@@ -498,25 +505,22 @@ async def mostrar_historial(usuario_id):
         if destinatario and destinatario not in ("—", "No detectado"):
             partes = destinatario.strip().split()
             if len(partes) >= 4:
-                # 2 nombres + 2 apellidos: ej. RICARDO JAVIER VASQUEZ RODRIGUEZ
                 dest_corto = f"{partes[0]} {partes[2]}"
             elif len(partes) == 3:
-                # 1 nombre + 2 apellidos: ej. RICARDO VASQUEZ RODRIGUEZ
                 dest_corto = f"{partes[0]} {partes[1]}"
             else:
-                # 2 palabras o menos: se queda igual
                 dest_corto = destinatario
         else:
             dest_corto = None
 
-        texto += f"{emoji} *{categoria}*  ·  `S/ {float(monto):.2f}`\n"
+        texto += f"{emoji} {categoria}  ·  S/ {float(monto):.2f}\n"
         texto += f"📝 {descripcion}\n"
         texto += f"📱 {medio}\n"
         texto += f"📅 {fecha_str}\n"
         if dest_corto:
             texto += f"👤 {dest_corto}\n"
         texto += "─────────────────────\n"
-    return texto
+    return texto, None
 
 
 async def generar_excel(usuario_id):
@@ -572,8 +576,8 @@ async def categorias(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def historial(update: Update, context: ContextTypes.DEFAULT_TYPE):
     usuario_id = obtener_o_crear_usuario(update.message.from_user.id)
-    texto = await mostrar_historial(usuario_id)
-    await update.message.reply_text(texto, parse_mode="Markdown", reply_markup=menu_principal())
+    texto, _ = await mostrar_historial(usuario_id)
+    await update.message.reply_text(texto, reply_markup=menu_principal())
 
 async def exportar(update: Update, context: ContextTypes.DEFAULT_TYPE):
     usuario_id = obtener_o_crear_usuario(update.message.from_user.id)
@@ -984,8 +988,8 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         texto = await mostrar_categorias(usuario_id)
         await safe_edit(query, texto, parse_mode="Markdown", reply_markup=menu_principal())
     elif accion == "historial":
-        texto = await mostrar_historial(usuario_id)
-        await safe_edit(query, texto, parse_mode="Markdown", reply_markup=menu_principal())
+        texto, _ = await mostrar_historial(usuario_id)
+        await safe_edit(query, texto, reply_markup=menu_principal())
     elif accion == "exportar":
         buffer, total = await generar_excel(usuario_id)
         if not buffer:
