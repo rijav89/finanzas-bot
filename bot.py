@@ -497,14 +497,6 @@ async def mostrar_categorias(usuario_id):
     return texto
 
 
-<<<<<<< HEAD
-async def mostrar_historial(usuario_id):
-    filas = obtener_historial(usuario_id, limite=10)
-    if not filas:
-        return "📭 No tienes transacciones registradas aún.", None
-
-    texto = "📜 Últimas 10 transacciones:\n"
-=======
 async def mostrar_historial(usuario_id, page=0):
     limite = 5
     offset = page * limite
@@ -519,7 +511,6 @@ async def mostrar_historial(usuario_id, page=0):
         return "📭 No hay más transacciones.", None
 
     texto = f"📜 *Historial de transacciones (Pág {page + 1}):*\n"
->>>>>>> c46aaa2 (feat: Mejoras visuales (graficos matplotlib), paginacion y UX)
     texto += "─────────────────────\n\n"
     for i, (monto, medio, descripcion, categoria, destinatario, fecha) in enumerate(filas_mostrar, 1):
         emoji = EMOJIS_CATEGORIA.get(categoria, "📦")
@@ -543,9 +534,6 @@ async def mostrar_historial(usuario_id, page=0):
         if dest_corto:
             texto += f"👤 {dest_corto}\n"
         texto += "─────────────────────\n"
-<<<<<<< HEAD
-    return texto, None
-=======
 
     nav_botones = []
     if page > 0:
@@ -559,7 +547,6 @@ async def mostrar_historial(usuario_id, page=0):
     botones.append([InlineKeyboardButton("🔙 Menú Principal", callback_data="menu_principal")])
     
     return texto, InlineKeyboardMarkup(botones)
->>>>>>> c46aaa2 (feat: Mejoras visuales (graficos matplotlib), paginacion y UX)
 
 
 async def generar_excel(usuario_id):
@@ -615,16 +602,11 @@ async def categorias(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def historial(update: Update, context: ContextTypes.DEFAULT_TYPE):
     usuario_id = obtener_o_crear_usuario(update.message.from_user.id)
-<<<<<<< HEAD
-    texto, _ = await mostrar_historial(usuario_id)
-    await update.message.reply_text(texto, reply_markup=menu_principal())
-=======
     texto, teclado = await mostrar_historial(usuario_id)
     if teclado:
         await update.message.reply_text(texto, parse_mode="Markdown", reply_markup=teclado)
     else:
         await update.message.reply_text(texto, parse_mode="Markdown", reply_markup=menu_principal())
->>>>>>> c46aaa2 (feat: Mejoras visuales (graficos matplotlib), paginacion y UX)
 
 async def exportar(update: Update, context: ContextTypes.DEFAULT_TYPE):
     usuario_id = obtener_o_crear_usuario(update.message.from_user.id)
@@ -1071,39 +1053,11 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     elif accion == "resumen":
         texto = await mostrar_resumen(usuario_id)
-        ingresos = obtener_total_ingresos_mes(usuario_id)
-        gastos = float(obtener_total_mes(usuario_id))
-        mes = datetime.now().strftime("%B %Y")
-        img_buffer = generar_grafico_resumen(ingresos, gastos, mes)
-        
-        if query.message.photo or query.message.document:
-            await query.message.delete()
-            
-        if img_buffer:
-            await context.bot.send_photo(chat_id=query.message.chat_id, photo=img_buffer, caption=texto, parse_mode="Markdown", reply_markup=menu_principal())
-        else:
-            await context.bot.send_message(chat_id=query.message.chat_id, text=texto, parse_mode="Markdown", reply_markup=menu_principal())
+        await safe_edit(query, texto, parse_mode="Markdown", reply_markup=menu_principal())
             
     elif accion == "categorias":
         texto = await mostrar_categorias(usuario_id)
-<<<<<<< HEAD
         await safe_edit(query, texto, parse_mode="Markdown", reply_markup=menu_principal())
-    elif accion == "historial":
-        texto, _ = await mostrar_historial(usuario_id)
-        await safe_edit(query, texto, reply_markup=menu_principal())
-=======
-        datos = obtener_resumen_categorias(usuario_id)
-        total = obtener_total_mes(usuario_id)
-        mes = datetime.now().strftime("%B %Y")
-        img_buffer = generar_grafico_categorias(datos, float(total or 0), mes)
-        
-        if query.message.photo or query.message.document:
-            await query.message.delete()
-            
-        if img_buffer:
-            await context.bot.send_photo(chat_id=query.message.chat_id, photo=img_buffer, caption=texto, parse_mode="Markdown", reply_markup=menu_principal())
-        else:
-            await context.bot.send_message(chat_id=query.message.chat_id, text=texto, parse_mode="Markdown", reply_markup=menu_principal())
             
     elif accion.startswith("historial"):
         page = 0
