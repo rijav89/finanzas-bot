@@ -1073,7 +1073,6 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         else:
             await safe_edit(query, texto, parse_mode="Markdown", reply_markup=menu_principal())
         
->>>>>>> c46aaa2 (feat: Mejoras visuales (graficos matplotlib), paginacion y UX)
     elif accion == "exportar":
         buffer, total = await generar_excel(usuario_id)
         if not buffer:
