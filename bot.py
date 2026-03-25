@@ -41,10 +41,13 @@ from db import (
     eliminar_pago_fijo,
     obtener_pagos_fijos_del_dia,
     actualizar_medio_ultimas,
+    actualizar_medio_transaccion,
+    actualizar_medio_ingreso_reciente,
 )
 from ocr import procesar_voucher
 from categorias import clasificar_gasto
 from gastos_manual import detectar_intencion, extraer_gastos, extraer_ingreso, extraer_edicion
+from graficos import generar_grafico_categorias, generar_grafico_resumen
 
 # Estados de conversación
 ESPERANDO_DESCRIPCION       = 1
@@ -158,8 +161,11 @@ async def handle_texto(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(texto, parse_mode="Markdown", reply_markup=menu_principal())
 
     elif intencion == "VER_HISTORIAL":
-        texto, _ = await mostrar_historial(usuario_id)
-        await update.message.reply_text(texto, reply_markup=menu_principal())
+        texto, teclado = await mostrar_historial(usuario_id)
+        if teclado:
+            await update.message.reply_text(texto, parse_mode="Markdown", reply_markup=teclado)
+        else:
+            await update.message.reply_text(texto, parse_mode="Markdown", reply_markup=menu_principal())
 
     elif intencion == "EXPORTAR":
         buffer, total = await generar_excel(usuario_id)
@@ -359,6 +365,7 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await file.download_to_drive(file_path)
 
     try:
+        await update.message.reply_text("⏳ Leyendo texto del voucher...")
         monto, medio, destinatario, fecha = procesar_voucher(file_path)
 
         if monto == "No detectado":
@@ -490,18 +497,34 @@ async def mostrar_categorias(usuario_id):
     return texto
 
 
+<<<<<<< HEAD
 async def mostrar_historial(usuario_id):
     filas = obtener_historial(usuario_id, limite=10)
     if not filas:
         return "📭 No tienes transacciones registradas aún.", None
 
     texto = "📜 Últimas 10 transacciones:\n"
+=======
+async def mostrar_historial(usuario_id, page=0):
+    limite = 5
+    offset = page * limite
+    filas = obtener_historial(usuario_id, limite=limite + 1, offset=offset)
+    
+    hay_mas = len(filas) > limite
+    filas_mostrar = filas[:limite]
+
+    if not filas_mostrar and page == 0:
+        return "📭 No tienes transacciones registradas aún.", None
+    elif not filas_mostrar:
+        return "📭 No hay más transacciones.", None
+
+    texto = f"📜 *Historial de transacciones (Pág {page + 1}):*\n"
+>>>>>>> c46aaa2 (feat: Mejoras visuales (graficos matplotlib), paginacion y UX)
     texto += "─────────────────────\n\n"
-    for i, (monto, medio, descripcion, categoria, destinatario, fecha) in enumerate(filas, 1):
+    for i, (monto, medio, descripcion, categoria, destinatario, fecha) in enumerate(filas_mostrar, 1):
         emoji = EMOJIS_CATEGORIA.get(categoria, "📦")
         fecha_str = fecha.strftime("%d/%m/%Y  %H:%M") if fecha else "—"
 
-        # Acortar destinatario: primer nombre + primer apellido
         if destinatario and destinatario not in ("—", "No detectado"):
             partes = destinatario.strip().split()
             if len(partes) >= 4:
@@ -520,7 +543,23 @@ async def mostrar_historial(usuario_id):
         if dest_corto:
             texto += f"👤 {dest_corto}\n"
         texto += "─────────────────────\n"
+<<<<<<< HEAD
     return texto, None
+=======
+
+    nav_botones = []
+    if page > 0:
+        nav_botones.append(InlineKeyboardButton("⬅️ Anterior", callback_data=f"historial_{page-1}"))
+    if hay_mas:
+        nav_botones.append(InlineKeyboardButton("Siguiente ➡️", callback_data=f"historial_{page+1}"))
+    
+    botones = []
+    if nav_botones:
+        botones.append(nav_botones)
+    botones.append([InlineKeyboardButton("🔙 Menú Principal", callback_data="menu_principal")])
+    
+    return texto, InlineKeyboardMarkup(botones)
+>>>>>>> c46aaa2 (feat: Mejoras visuales (graficos matplotlib), paginacion y UX)
 
 
 async def generar_excel(usuario_id):
@@ -576,8 +615,16 @@ async def categorias(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def historial(update: Update, context: ContextTypes.DEFAULT_TYPE):
     usuario_id = obtener_o_crear_usuario(update.message.from_user.id)
+<<<<<<< HEAD
     texto, _ = await mostrar_historial(usuario_id)
     await update.message.reply_text(texto, reply_markup=menu_principal())
+=======
+    texto, teclado = await mostrar_historial(usuario_id)
+    if teclado:
+        await update.message.reply_text(texto, parse_mode="Markdown", reply_markup=teclado)
+    else:
+        await update.message.reply_text(texto, parse_mode="Markdown", reply_markup=menu_principal())
+>>>>>>> c46aaa2 (feat: Mejoras visuales (graficos matplotlib), paginacion y UX)
 
 async def exportar(update: Update, context: ContextTypes.DEFAULT_TYPE):
     usuario_id = obtener_o_crear_usuario(update.message.from_user.id)
@@ -762,13 +809,16 @@ async def pago_fijo_dia(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def cmd_editar(update: Update, context: ContextTypes.DEFAULT_TYPE):
     usuario_id = obtener_o_crear_usuario(update.message.from_user.id)
-    filas = obtener_ultimas_transacciones(usuario_id, limite=5)
-    if not filas:
+    # Llama al handler con página 0 directamente reutilizando lógica
+    filas = obtener_ultimas_transacciones(usuario_id, limite=6, offset=0)
+    hay_mas = len(filas) > 5
+    filas_mostrar = filas[:5]
+    if not filas_mostrar:
         await update.message.reply_text("📭 No tienes transacciones para editar.", reply_markup=menu_principal())
         return
-    texto = "✏️ *¿Cuál transacción deseas gestionar?*\n─────────────────────\n\n"
+    texto = "✏️ *Gestión de transacciones (Pág 1):*\n─────────────────────\n\n"
     botones = []
-    for id_, monto, desc, cat, medio, fecha in filas:
+    for id_, monto, desc, cat, medio, fecha in filas_mostrar:
         emoji = EMOJIS_CATEGORIA.get(cat, "📦")
         fecha_str = fecha.strftime("%d/%m %H:%M") if fecha else "—"
         texto += f"`#{id_}` {emoji} S/ {float(monto):.2f} — {desc}\n📅 {fecha_str}\n\n"
@@ -776,7 +826,12 @@ async def cmd_editar(update: Update, context: ContextTypes.DEFAULT_TYPE):
             InlineKeyboardButton(f"✏️ Editar #{id_}", callback_data=f"editar_{id_}"),
             InlineKeyboardButton(f"🗑️ Eliminar #{id_}", callback_data=f"eliminar_{id_}"),
         ])
-    botones.append([InlineKeyboardButton("🔙 Volver", callback_data="resumen")])
+    nav_botones = []
+    if hay_mas:
+        nav_botones.append(InlineKeyboardButton("Siguiente ➡️", callback_data="ver_editar_1"))
+    if nav_botones:
+        botones.append(nav_botones)
+    botones.append([InlineKeyboardButton("🔙 Volver", callback_data="menu_principal")])
     await update.message.reply_text(texto, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(botones))
 
 
@@ -808,8 +863,16 @@ async def safe_edit(query, texto, **kwargs):
     try:
         await query.edit_message_text(texto, **kwargs)
     except BadRequest as e:
-        if "Message is not modified" not in str(e):
+        err_msg = str(e)
+        if "Message is not modified" in err_msg:
+            pass
+        elif "There is no text in the message to edit" in err_msg:
+            # Si el mensaje actual es una foto/documento, se borra y se envía el texto como nuevo
+            await query.message.delete()
+            await query.message.reply_text(texto, **kwargs)
+        else:
             raise
+
 
 
 async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -824,34 +887,14 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         trans_id = int(partes[0])
         medio = partes[1]
         if medio != "skip":
-            from db import get_connection
-            conn = get_connection()
-            cur = conn.cursor()
-            cur.execute(
-                "UPDATE transacciones SET medio=%s WHERE id=%s AND usuario_id=%s",
-                (medio, trans_id, usuario_id)
-            )
-            conn.commit()
-            cur.close()
-            conn.close()
+            actualizar_medio_transaccion(trans_id, usuario_id, medio)
         nuevo_texto = query.message.text.replace("\n\n¿Actualizar el medio de pago?", f"\n📱 Medio: *{medio}*" if medio != "skip" else "")
         await safe_edit(query, nuevo_texto, parse_mode="Markdown", reply_markup=menu_principal())
 
     # ── Medio de ingreso ───────────────────────────────────────────────
     elif accion.startswith("ing_medio_"):
         medio = accion.replace("ing_medio_", "")
-        from db import get_connection
-        conn = get_connection()
-        cur = conn.cursor()
-        cur.execute(
-            """UPDATE ingresos SET descripcion = descripcion || ' (' || %s || ')'
-               WHERE usuario_id=%s AND fecha >= NOW() - INTERVAL '5 minutes'
-               AND descripcion NOT LIKE '%%(%%)' """,
-            (medio, usuario_id)
-        )
-        conn.commit()
-        cur.close()
-        conn.close()
+        actualizar_medio_ingreso_reciente(usuario_id, medio)
         await safe_edit(query,
             query.message.text.replace("\n\n¿Por qué medio recibiste el pago?", f"\n📱 Medio: *{medio}*"),
             parse_mode="Markdown", reply_markup=menu_principal()
@@ -869,6 +912,16 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # ── Eliminar transacción ───────────────────────────────────────────
     elif accion.startswith("eliminar_"):
         trans_id = int(accion.replace("eliminar_", ""))
+        botones = [
+            [
+                InlineKeyboardButton("✅ Sí, eliminar", callback_data=f"conf_elim_{trans_id}"),
+                InlineKeyboardButton("❌ No, cancelar", callback_data="ver_editar")
+            ]
+        ]
+        await safe_edit(query, f"⚠️ ¿Estás seguro de que deseas eliminar la transacción #{trans_id}?", reply_markup=InlineKeyboardMarkup(botones))
+
+    elif accion.startswith("conf_elim_"):
+        trans_id = int(accion.replace("conf_elim_", ""))
         eliminado = eliminar_transaccion(trans_id, usuario_id)
         if eliminado:
             await safe_edit(query, f"🗑️ Transacción #{trans_id} eliminada.", reply_markup=menu_principal())
@@ -960,18 +1013,33 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         teclado = InlineKeyboardMarkup([
             [InlineKeyboardButton("➕ Agregar", callback_data="agregar_pago_fijo")],
             [InlineKeyboardButton("🗑️ Eliminar", callback_data="listar_eliminar_pago")],
-            [InlineKeyboardButton("🔙 Volver", callback_data="resumen")],
+            [InlineKeyboardButton("🔙 Volver", callback_data="menu_principal")],
         ])
         await safe_edit(query, texto, parse_mode="Markdown", reply_markup=teclado)
 
-    elif accion == "ver_editar":
-        filas = obtener_ultimas_transacciones(usuario_id, limite=5)
-        if not filas:
+    elif accion.startswith("ver_editar"):
+        page = 0
+        if "_" in accion and accion != "ver_editar":
+            partes = accion.split("_")
+            if len(partes) > 2 and partes[2].isdigit():
+                page = int(partes[2])
+                
+        limite = 5
+        offset = page * limite
+        filas = obtener_ultimas_transacciones(usuario_id, limite=limite+1, offset=offset)
+        hay_mas = len(filas) > limite
+        filas_mostrar = filas[:limite]
+        
+        if not filas_mostrar and page == 0:
             await query.answer("📭 No tienes transacciones para gestionar.")
             return
-        texto = "✏️ *Gestionar transacciones:*\n─────────────────────\n\n"
+        elif not filas_mostrar:
+            await query.answer("📭 No hay más transacciones.")
+            return
+            
+        texto = f"✏️ *Gestionar transacciones (Pág {page+1}):*\n─────────────────────\n\n"
         botones = []
-        for id_, monto, desc, cat, medio, fecha in filas:
+        for id_, monto, desc, cat, medio, fecha in filas_mostrar:
             emoji = EMOJIS_CATEGORIA.get(cat, "📦")
             fecha_str = fecha.strftime("%d/%m %H:%M") if fecha else "—"
             texto += f"`#{id_}` {emoji} S/ {float(monto):.2f} — {desc}\n📅 {fecha_str}\n\n"
@@ -979,17 +1047,79 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 InlineKeyboardButton(f"✏️ Editar #{id_}", callback_data=f"editar_{id_}"),
                 InlineKeyboardButton(f"🗑️ Eliminar #{id_}", callback_data=f"eliminar_{id_}"),
             ])
-        botones.append([InlineKeyboardButton("🔙 Volver", callback_data="resumen")])
-        await query.message.reply_text(texto, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(botones))
+            
+        nav_botones = []
+        if page > 0:
+            nav_botones.append(InlineKeyboardButton("⬅️ Anterior", callback_data=f"ver_editar_{page-1}"))
+        if hay_mas:
+            nav_botones.append(InlineKeyboardButton("Siguiente ➡️", callback_data=f"ver_editar_{page+1}"))
+            
+        if nav_botones:
+            botones.append(nav_botones)
+        botones.append([InlineKeyboardButton("🔙 Volver", callback_data="menu_principal")])
+        await safe_edit(query, texto, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(botones))
+        
+    elif accion == "menu_principal":
+        await safe_edit(query,
+            "👋 *Bienvenido a FinanzasBot!*\n\n"
+            "Envíame una foto de tu voucher de *Yape* o *Plin*, o escríbeme tus gastos directamente.\n\n"
+            "_Ej: \"Hoy gasté 50 soles en almuerzo y 30 en taxi\"_\n\n"
+            "¿Qué deseas hacer?",
+            parse_mode="Markdown",
+            reply_markup=menu_principal()
+        )
+
     elif accion == "resumen":
         texto = await mostrar_resumen(usuario_id)
-        await safe_edit(query, texto, parse_mode="Markdown", reply_markup=menu_principal())
+        ingresos = obtener_total_ingresos_mes(usuario_id)
+        gastos = float(obtener_total_mes(usuario_id))
+        mes = datetime.now().strftime("%B %Y")
+        img_buffer = generar_grafico_resumen(ingresos, gastos, mes)
+        
+        if query.message.photo or query.message.document:
+            await query.message.delete()
+            
+        if img_buffer:
+            await context.bot.send_photo(chat_id=query.message.chat_id, photo=img_buffer, caption=texto, parse_mode="Markdown", reply_markup=menu_principal())
+        else:
+            await context.bot.send_message(chat_id=query.message.chat_id, text=texto, parse_mode="Markdown", reply_markup=menu_principal())
+            
     elif accion == "categorias":
         texto = await mostrar_categorias(usuario_id)
+<<<<<<< HEAD
         await safe_edit(query, texto, parse_mode="Markdown", reply_markup=menu_principal())
     elif accion == "historial":
         texto, _ = await mostrar_historial(usuario_id)
         await safe_edit(query, texto, reply_markup=menu_principal())
+=======
+        datos = obtener_resumen_categorias(usuario_id)
+        total = obtener_total_mes(usuario_id)
+        mes = datetime.now().strftime("%B %Y")
+        img_buffer = generar_grafico_categorias(datos, float(total or 0), mes)
+        
+        if query.message.photo or query.message.document:
+            await query.message.delete()
+            
+        if img_buffer:
+            await context.bot.send_photo(chat_id=query.message.chat_id, photo=img_buffer, caption=texto, parse_mode="Markdown", reply_markup=menu_principal())
+        else:
+            await context.bot.send_message(chat_id=query.message.chat_id, text=texto, parse_mode="Markdown", reply_markup=menu_principal())
+            
+    elif accion.startswith("historial"):
+        page = 0
+        if "_" in accion and accion != "historial":
+            partes = accion.split("_")
+            if len(partes) > 1 and partes[1].isdigit():
+                page = int(partes[1])
+                
+        texto, teclado = await mostrar_historial(usuario_id, page)
+        
+        if teclado:
+            await safe_edit(query, texto, parse_mode="Markdown", reply_markup=teclado)
+        else:
+            await safe_edit(query, texto, parse_mode="Markdown", reply_markup=menu_principal())
+        
+>>>>>>> c46aaa2 (feat: Mejoras visuales (graficos matplotlib), paginacion y UX)
     elif accion == "exportar":
         buffer, total = await generar_excel(usuario_id)
         if not buffer:
@@ -997,7 +1127,9 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
         mes_actual = datetime.now().strftime("%B %Y")
         nombre_archivo = f"finanzas_{datetime.now().strftime('%Y_%m')}.xlsx"
-        await query.message.reply_document(
+        await query.message.delete()
+        await context.bot.send_document(
+            chat_id=query.message.chat_id,
             document=buffer, filename=nombre_archivo,
             caption=f"📊 Reporte de {mes_actual} — Total: S/ {total:.2f}",
             reply_markup=menu_principal()

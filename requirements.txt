@@ -5,3 +5,4 @@ psycopg_pool
 pillow
 openpyxl
 python-dotenv
+matplotlib

@@ -60,6 +60,15 @@ def actualizar_medio_ultimas(usuario_id: int, medio: str):
             )
             conn.commit()
 
+def actualizar_medio_transaccion(trans_id: int, usuario_id: int, medio: str):
+    with db_pool.connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "UPDATE transacciones SET medio=%s WHERE id=%s AND usuario_id=%s",
+                (medio, trans_id, usuario_id)
+            )
+            conn.commit()
+
 
 def obtener_total_mes(usuario_id: int) -> float:
     with db_pool.connection() as conn:
@@ -77,7 +86,7 @@ def obtener_total_mes(usuario_id: int) -> float:
             return total
 
 
-def obtener_historial(usuario_id: int, limite: int = 10) -> list:
+def obtener_historial(usuario_id: int, limite: int = 10, offset: int = 0) -> list:
     with db_pool.connection() as conn:
         with conn.cursor() as cur:
             cur.execute(
@@ -86,9 +95,9 @@ def obtener_historial(usuario_id: int, limite: int = 10) -> list:
                 FROM transacciones
                 WHERE usuario_id=%s
                 ORDER BY fecha DESC
-                LIMIT %s
+                LIMIT %s OFFSET %s
                 """,
-                (usuario_id, limite),
+                (usuario_id, limite, offset),
             )
             rows = cur.fetchall()
             return rows
@@ -140,6 +149,17 @@ def guardar_ingreso(usuario_id: int, monto: float, descripcion: str, categoria: 
             )
             conn.commit()
 
+def actualizar_medio_ingreso_reciente(usuario_id: int, medio: str):
+    with db_pool.connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """UPDATE ingresos SET descripcion = descripcion || ' (' || %s || ')'
+                   WHERE usuario_id=%s AND fecha >= NOW() - INTERVAL '5 minutes'
+                   AND descripcion NOT LIKE '%%(%%)' """,
+                (medio, usuario_id)
+            )
+            conn.commit()
+
 
 def obtener_total_ingresos_mes(usuario_id: int) -> float:
     with db_pool.connection() as conn:
@@ -171,16 +191,16 @@ def obtener_historial_ingresos(usuario_id: int, limite: int = 10) -> list:
 
 # ── Editar / Eliminar transacciones ──────────────────────────────────────────
 
-def obtener_ultimas_transacciones(usuario_id: int, limite: int = 5) -> list:
+def obtener_ultimas_transacciones(usuario_id: int, limite: int = 5, offset: int = 0) -> list:
     with db_pool.connection() as conn:
         with conn.cursor() as cur:
             cur.execute(
                 """
                 SELECT id, monto, descripcion, categoria, medio, fecha
                 FROM transacciones WHERE usuario_id=%s
-                ORDER BY fecha DESC LIMIT %s
+                ORDER BY fecha DESC LIMIT %s OFFSET %s
                 """,
-                (usuario_id, limite)
+                (usuario_id, limite, offset)
             )
             rows = cur.fetchall()
             return rows
