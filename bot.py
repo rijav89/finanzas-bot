@@ -7,6 +7,11 @@ bot.py — FinanzasBot v3.0
 
 import os
 import io
+import warnings
+from telegram.warnings import PTBUserWarning
+
+warnings.filterwarnings("ignore", category=PTBUserWarning)
+
 from datetime import datetime
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.error import BadRequest
@@ -43,10 +48,16 @@ from db import (
     actualizar_medio_ultimas,
     actualizar_medio_transaccion,
     actualizar_medio_ingreso_reciente,
+    obtener_cuentas,
+    obtener_cuenta_por_nombre,
+    obtener_cuenta_principal,
+    crear_cuenta,
+    archivar_cuenta,
+    registrar_transferencia,
 )
 from ocr import procesar_voucher
 from categorias import clasificar_gasto
-from gastos_manual import detectar_intencion, extraer_gastos, extraer_ingreso, extraer_edicion
+from gastos_manual import detectar_intencion, extraer_gastos, extraer_ingreso, extraer_edicion, extraer_transferencia
 from graficos import generar_grafico_categorias, generar_grafico_resumen
 
 # Estados de conversación
@@ -60,11 +71,16 @@ PAGO_FIJO_MONTO             = 7
 PAGO_FIJO_DIA               = 8
 EDITAR_CAMPO                = 9
 
+NUEVA_CUENTA_NOMBRE = 10
+NUEVA_CUENTA_SALDO = 11
+
 datos_pendientes         = {}
 registro_manual_pendiente = {}
 ingreso_pendiente        = {}
 pago_fijo_pendiente      = {}
 edicion_pendiente        = {}
+transferencia_pendiente  = {}
+cuenta_pendiente         = {}
 
 EMOJIS_CATEGORIA = {
     "Comida":          "🍽️",
@@ -84,43 +100,31 @@ EMOJIS_CATEGORIA = {
 }
 
 RESPUESTA_FUERA_DE_TEMA = (
-    "🤖 Hola! Soy *FinanzasBot*, tu asistente de finanzas personales.\n\n"
-    "Estoy diseñado exclusivamente para ayudarte a registrar y analizar tus finanzas. Puedo:\n\n"
-    "📸 Leer vouchers de *Yape* y *Plin* automáticamente\n"
-    "✍️ Registrar gastos que me escribas en texto libre\n"
-    "💵 Registrar tus *ingresos* (sueldo, freelance, ventas, etc.)\n"
-    "💰 Mostrarte tu *saldo disponible* del mes\n"
-    "📊 Resúmenes y estadísticas de tus gastos\n"
-    "🔔 Recordarte tus *pagos fijos* mensuales\n"
-    "📥 Exportar tus gastos a Excel\n\n"
-    "Por ejemplo puedes escribirme:\n"
-    "_\"Hoy gasté 50 soles en almuerzo y 20 en taxi\"_\n"
-    "_\"Me pagaron 4000 de sueldo\"_\n"
-    "_\"Quiero registrar un ingreso\"_\n\n"
-    "¿Qué deseas hacer?"
+    "👋 *¡Hola! Soy FinanzasBot, tu asistente personal.* 🤖\n\n"
+    "Lleva el control de tu dinero al instante. Simplemente escríbeme como si estuvieras chateando con un amigo:\n\n"
+    "📸 *Vouchers:* Envíame la captura de tus pagos por Yape o Plin.\n"
+    "💬 *Textos:* _\"Gasté 50 en el súper\"_, _\"Recibí 1500 de sueldo\"_, _\"Pasa 200 a mis ahorros\"_.\n\n"
+    "Usa el menú aquí abajo para organizar tus *Cuentas*, registrar *Ingresos*, o revisar cómo va tu *Saldo* del mes.\n\n"
+    "👇 *¿Qué deseas hacer ahora mismo?*"
 )
 
 
 def menu_principal() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup([
         [
-            InlineKeyboardButton("📊 Resumen", callback_data="resumen"),
-            InlineKeyboardButton("🏷️ Categorías", callback_data="categorias"),
-        ],
-        [
-            InlineKeyboardButton("📜 Historial", callback_data="historial"),
-            InlineKeyboardButton("📥 Exportar Excel", callback_data="exportar"),
+            InlineKeyboardButton("🏦 Mis Cuentas", callback_data="mis_cuentas"),
+            InlineKeyboardButton("💰 Saldo Global", callback_data="ver_saldo"),
         ],
         [
             InlineKeyboardButton("💵 Ingresos", callback_data="ver_ingresos"),
-            InlineKeyboardButton("💰 Saldo", callback_data="ver_saldo"),
+            InlineKeyboardButton("📉 Gastos / Categorías", callback_data="categorias"),
         ],
         [
-            InlineKeyboardButton("🔔 Pagos fijos", callback_data="ver_pagos"),
-            InlineKeyboardButton("✏️ Editar gastos", callback_data="ver_editar"),
+            InlineKeyboardButton("🔄 Transferir", callback_data="iniciar_transferencia"),
+            InlineKeyboardButton("📜 Historial / Editar", callback_data="ver_editar"),
         ],
         [
-            InlineKeyboardButton("❓ Ayuda", callback_data="ayuda"),
+            InlineKeyboardButton("⚙️ Ajustes y Más", callback_data="ajustes_mas"),
         ],
     ])
 
@@ -129,10 +133,7 @@ def menu_principal() -> InlineKeyboardMarkup:
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
-        "👋 *Bienvenido a FinanzasBot!*\n\n"
-        "Envíame una foto de tu voucher de *Yape* o *Plin*, o escríbeme tus gastos directamente.\n\n"
-        "_Ej: \"Hoy gasté 50 soles en almuerzo y 30 en taxi\"_\n\n"
-        "¿Qué deseas hacer?",
+        RESPUESTA_FUERA_DE_TEMA,
         parse_mode="Markdown",
         reply_markup=menu_principal()
     )
@@ -196,33 +197,49 @@ async def handle_texto(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
     elif intencion == "VER_SALDO":
-        ingresos = obtener_total_ingresos_mes(usuario_id)
-        gastos = float(obtener_total_mes(usuario_id))
-        saldo = ingresos - gastos
-        emoji_saldo = "✅" if saldo >= 0 else "🔴"
-        porcentaje = (gastos / ingresos * 100) if ingresos > 0 else 0
-        barra = "█" * min(int(porcentaje / 10), 10) + "░" * max(0, 10 - int(porcentaje / 10))
-        mes = datetime.now().strftime("%B %Y")
-        await update.message.reply_text(
-            f"💰 *Balance de {mes}*\n"
-            f"─────────────────────\n"
-            f"📈 Ingresos:  S/ {ingresos:.2f}\n"
-            f"📉 Gastos:    S/ {gastos:.2f}\n"
-            f"─────────────────────\n"
-            f"{emoji_saldo} Saldo:     S/ {saldo:.2f}\n\n"
-            f"Usaste el {porcentaje:.1f}% de tus ingresos\n{barra}",
-            parse_mode="Markdown", reply_markup=menu_principal()
-        )
+        await cmd_saldo(update, context)
+
+    elif intencion == "TRANSFERIR":
+        cuentas = obtener_cuentas(usuario_id)
+        nombres_cuentas = [c[1] for c in cuentas]
+        datos = extraer_transferencia(mensaje, nombres_cuentas)
+        monto = datos.get("monto", 0)
+        origen_str = datos.get("cuenta_origen", "Principal")
+        destino_str = datos.get("cuenta_destino", "")
+        
+        origen_id = obtener_cuenta_por_nombre(usuario_id, origen_str) or obtener_cuenta_principal(usuario_id)
+        destino_id = obtener_cuenta_por_nombre(usuario_id, destino_str)
+        
+        if not destino_id or origen_id == destino_id or float(monto) <= 0:
+            await update.message.reply_text(
+                "⚠️ No pude entender bien la transferencia. Ejemplo válido:\n"
+                "_\"Transferir 100 de Principal a Ahorros\"_\n\n"
+                "Asegúrate de que ambas cuentas existan (usa /cuentas).",
+                parse_mode="Markdown", reply_markup=menu_principal()
+            )
+        else:
+            registrar_transferencia(usuario_id, origen_id, destino_id, float(monto), f"Transferencia a {destino_str}")
+            await update.message.reply_text(
+                f"✅ *Transferencia registrada*\n\n"
+                f"💸 S/ {float(monto):.2f}\n"
+                f"📤 Origen: {origen_str.capitalize()}\n"
+                f"📥 Destino: {destino_str.capitalize()}",
+                parse_mode="Markdown", reply_markup=menu_principal()
+            )
 
     elif intencion == "REGISTRAR_INGRESO":
-        datos = extraer_ingreso(mensaje)
+        cuentas = obtener_cuentas(usuario_id)
+        nombres_cuentas = [c[1] for c in cuentas]
+        datos = extraer_ingreso(mensaje, nombres_cuentas)
         monto = datos.get("monto", 0)
         descripcion = datos.get("descripcion", "Ingreso")
         medio = datos.get("medio", "No especificado")
+        cuenta_destino_str = datos.get("cuenta_destino", "Principal")
+        cuenta_destino_id = obtener_cuenta_por_nombre(usuario_id, cuenta_destino_str) or obtener_cuenta_principal(usuario_id)
 
         if monto and float(monto) > 0:
             # Tiene monto — preguntar medio si no fue detectado
-            guardar_ingreso(usuario_id, monto, descripcion)
+            guardar_ingreso(usuario_id, monto, descripcion, cuenta_id=cuenta_destino_id)
             if medio == "No especificado":
                 teclado_medio = InlineKeyboardMarkup([
                     [
@@ -277,8 +294,11 @@ async def handle_texto(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def _procesar_y_guardar_gastos(update, usuario_id, mensaje):
     """Extrae gastos del mensaje, detecta fecha, pregunta medio y guarda."""
     from datetime import datetime
+    cuentas = obtener_cuentas(usuario_id)
+    nombres_cuentas = [c[1] for c in cuentas]
+    
     await update.message.reply_text("⏳ Analizando tus gastos...")
-    gastos, fecha_str = extraer_gastos(mensaje)
+    gastos, fecha_str = extraer_gastos(mensaje, nombres_cuentas)
 
     if not gastos:
         await update.message.reply_text(
@@ -304,12 +324,15 @@ async def _procesar_y_guardar_gastos(update, usuario_id, mensaje):
         monto = gasto.get("monto", 0)
         descripcion = gasto.get("descripcion", "Sin descripción")
         categoria = gasto.get("categoria", "Otros")
+        cuenta_origen_str = gasto.get("cuenta_origen", "Principal")
+        cuenta_origen_id = obtener_cuenta_por_nombre(usuario_id, cuenta_origen_str) or obtener_cuenta_principal(usuario_id)
+        
         emoji = EMOJIS_CATEGORIA.get(categoria, "📦")
         guardar_transaccion(
             usuario_id, monto=monto, medio="Manual",
             descripcion=descripcion, categoria=categoria,
             destinatario="—", fecha_voucher="—",
-            fecha=fecha_dt
+            fecha=fecha_dt, cuenta_id=cuenta_origen_id
         )
         resumen_texto += f"{emoji} S/ {monto:.2f} — {descripcion} _{categoria}_\n"
         total += float(monto)
@@ -641,6 +664,7 @@ async def cancelar(update: Update, context: ContextTypes.DEFAULT_TYPE):
     pago_fijo_pendiente.pop(tid, None)
     edicion_pendiente.pop(tid, None)
     registro_manual_pendiente.pop(tid, None)
+    cuenta_pendiente.pop(tid, None)
     await update.message.reply_text("❌ Operación cancelada.", reply_markup=menu_principal())
     return ConversationHandler.END
 
@@ -692,26 +716,41 @@ async def ingreso_recibir_descripcion(update: Update, context: ContextTypes.DEFA
 
 async def cmd_saldo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     usuario_id = obtener_o_crear_usuario(update.message.from_user.id)
-    ingresos = obtener_total_ingresos_mes(usuario_id)
-    gastos = float(obtener_total_mes(usuario_id))
-    saldo = ingresos - gastos
-    emoji_saldo = "✅" if saldo >= 0 else "🔴"
-    porcentaje = (gastos / ingresos * 100) if ingresos > 0 else 0
-    barra_usada = int(porcentaje / 10)
-    barra = "█" * min(barra_usada, 10) + "░" * max(0, 10 - barra_usada)
+    cuentas = obtener_cuentas(usuario_id)
+    
+    total_saldo = 0
+    cuentas_texto = ""
+    for c in cuentas:
+        cid, nombre, s_ini, es_princ, act = c
+        ing_cta = obtener_total_ingresos_mes(usuario_id, cid)
+        gas_cta = float(obtener_total_mes(usuario_id, cid))
+        saldo_cta = float(s_ini) + ing_cta - gas_cta
+        total_saldo += saldo_cta
+        if es_princ:
+            cuentas_texto = f"🌟 *{nombre}*: S/ {saldo_cta:.2f}\n" + cuentas_texto
+        else:
+            cuentas_texto += f"🏦 *{nombre}*: S/ {saldo_cta:.2f}\n"
+
     mes = datetime.now().strftime("%B %Y")
-    await update.message.reply_text(
-        f"💰 *Balance de {mes}*\n"
+    
+    texto_respuesta = (
+        f"💰 *Saldo Global*\n"
         f"─────────────────────\n"
-        f"📈 Ingresos:   S/ {ingresos:.2f}\n"
-        f"📉 Gastos:     S/ {gastos:.2f}\n"
+        f"{cuentas_texto}"
         f"─────────────────────\n"
-        f"{emoji_saldo} Saldo:      S/ {saldo:.2f}\n\n"
-        f"Usaste el {porcentaje:.1f}% de tus ingresos\n"
-        f"{barra}",
-        parse_mode="Markdown",
-        reply_markup=menu_principal()
+        f"✅ *Total:*      S/ {total_saldo:.2f}\n\n"
+        f"_(Nota: El saldo = Saldo inicial + Ingresos - Gastos)_"
     )
+    
+    try:
+        await update.message.reply_text(
+            texto_respuesta,
+            parse_mode="Markdown",
+            reply_markup=menu_principal()
+        )
+    except Exception:
+        # En caso sea llamado desde un callback query (no update.message)
+        pass
 
 
 # ── /pagos ─────────────────────────────────────────────────────────────────────
@@ -995,9 +1034,51 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         teclado = InlineKeyboardMarkup([
             [InlineKeyboardButton("➕ Agregar", callback_data="agregar_pago_fijo")],
             [InlineKeyboardButton("🗑️ Eliminar", callback_data="listar_eliminar_pago")],
-            [InlineKeyboardButton("🔙 Volver", callback_data="menu_principal")],
+            [InlineKeyboardButton("🔙 Volver", callback_data="ajustes_mas")],
         ])
         await safe_edit(query, texto, parse_mode="Markdown", reply_markup=teclado)
+
+    elif accion == "mis_cuentas":
+        cuentas = obtener_cuentas(usuario_id)
+        texto = "🏦 *Mis Cuentas*\n─────────────────────\n\n"
+        for c in cuentas:
+            cid, nombre, s_ini, es_princ, act = c
+            ing_cta = obtener_total_ingresos_mes(usuario_id, cid)
+            gas_cta = float(obtener_total_mes(usuario_id, cid))
+            saldo = float(s_ini) + ing_cta - gas_cta
+            marca = "🌟" if es_princ else "🔹"
+            texto += f"{marca} *{nombre}*\n      Saldo: S/ {saldo:.2f}\n\n"
+        
+        teclado = InlineKeyboardMarkup([
+            [InlineKeyboardButton("➕ Nueva Cuenta", callback_data="iniciar_nueva_cuenta")],
+            [InlineKeyboardButton("🔙 Volver", callback_data="menu_principal")]
+        ])
+        await safe_edit(query, texto, parse_mode="Markdown", reply_markup=teclado)
+
+    elif accion == "iniciar_transferencia":
+        texto = (
+            "🔄 *Transferir entre cuentas*\n\n"
+            "Escribe la transferencia como texto libre. Por ejemplo:\n"
+            "_\"Transferir 100 de Principal a Ahorros\"_\n"
+            "_\"Pase 50 soles de mi cuenta Ahorros a la cuenta Principal\"_"
+        )
+        await safe_edit(query, texto, parse_mode="Markdown", reply_markup=menu_principal())
+
+    elif accion == "ajustes_mas":
+        teclado = InlineKeyboardMarkup([
+            [
+                InlineKeyboardButton("📊 Resumen Mensual", callback_data="resumen"),
+                InlineKeyboardButton("📥 Exportar Excel", callback_data="exportar"),
+            ],
+            [
+                InlineKeyboardButton("🔔 Pagos fijos", callback_data="ver_pagos"),
+                InlineKeyboardButton("❓ Ayuda", callback_data="ayuda"),
+            ],
+            [
+                InlineKeyboardButton("🔙 Menú Principal", callback_data="menu_principal")
+            ]
+        ])
+        await safe_edit(query, "⚙️ *Ajustes y Más*\n\nSelecciona una opción:", parse_mode="Markdown", reply_markup=teclado)
 
     elif accion.startswith("ver_editar"):
         page = 0
@@ -1043,10 +1124,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
     elif accion == "menu_principal":
         await safe_edit(query,
-            "👋 *Bienvenido a FinanzasBot!*\n\n"
-            "Envíame una foto de tu voucher de *Yape* o *Plin*, o escríbeme tus gastos directamente.\n\n"
-            "_Ej: \"Hoy gasté 50 soles en almuerzo y 30 en taxi\"_\n\n"
-            "¿Qué deseas hacer?",
+            RESPUESTA_FUERA_DE_TEMA,
             parse_mode="Markdown",
             reply_markup=menu_principal()
         )
@@ -1100,6 +1178,71 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
 
+# ── /cuentas y /nuevacuenta ──────────────────────────────────────────────────
+
+async def mis_cuentas_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    usuario_id = obtener_o_crear_usuario(update.message.from_user.id)
+    cuentas = obtener_cuentas(usuario_id)
+    texto = "🏦 *Mis Cuentas*\n─────────────────────\n\n"
+    for c in cuentas:
+        cid, nombre, s_ini, es_princ, act = c
+        ing_cta = obtener_total_ingresos_mes(usuario_id, cid)
+        gas_cta = float(obtener_total_mes(usuario_id, cid))
+        saldo = float(s_ini) + ing_cta - gas_cta
+        marca = "🌟" if es_princ else "🔹"
+        texto += f"{marca} *{nombre}*\n      Saldo: S/ {saldo:.2f}\n\n"
+    
+    teclado = InlineKeyboardMarkup([
+        [InlineKeyboardButton("➕ Nueva Cuenta", callback_data="iniciar_nueva_cuenta")],
+        [InlineKeyboardButton("🔙 Volver", callback_data="menu_principal")]
+    ])
+    await update.message.reply_text(texto, parse_mode="Markdown", reply_markup=teclado)
+
+async def cmd_nueva_cuenta(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    user = query.from_user if query else update.message.from_user
+    tid = user.id
+    cuenta_pendiente[tid] = {}
+    texto = "🏦 *Crear Nueva Cuenta*\n\n¿Qué nombre le pondrás a la cuenta?\n_(Ej: Tarjeta Crédito, Ahorros BCP)_\n\n/cancelar para salir."
+    
+    if query:
+        await query.answer()
+        await safe_edit(query, texto, parse_mode="Markdown")
+    else:
+        await update.message.reply_text(texto, parse_mode="Markdown")
+        
+    return NUEVA_CUENTA_NOMBRE
+
+async def nueva_cuenta_nombre_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    tid = update.message.from_user.id
+    nombre = update.message.text.strip()
+    cuenta_pendiente[tid]["nombre"] = nombre
+    await update.message.reply_text(
+        f"✅ Nombre: {nombre}\n\n¿Cuál es el saldo inicial de esta cuenta? _(Solo el número, ej: 1000)_\nEscribe 0 si empieza vacía."
+    )
+    return NUEVA_CUENTA_SALDO
+
+async def nueva_cuenta_saldo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    tid = update.message.from_user.id
+    try:
+        saldo = float(update.message.text.strip().replace(",", "."))
+        nombre = cuenta_pendiente.pop(tid, {}).get("nombre", "Cuenta")
+        usuario_id = obtener_o_crear_usuario(tid)
+        crear_cuenta(usuario_id, nombre, saldo)
+        await update.message.reply_text(
+            f"✅ *Cuenta Creada Exitosamente*\n\n"
+            f"🏦 Nombre: {nombre}\n"
+            f"💰 Saldo inicial: S/ {saldo:.2f}\n\n"
+            f"Ya puedes usar esta cuenta para registrar tus transferencias y gastos.",
+            parse_mode="Markdown",
+            reply_markup=menu_principal()
+        )
+        return ConversationHandler.END
+    except ValueError:
+        await update.message.reply_text("⚠️ Ingresa solo números. Ej: *1500* o *0*", parse_mode="Markdown")
+        return NUEVA_CUENTA_SALDO
+
+
 # ── Main ─────────────────────────────────────────────────────────────────────
 
 def main():
@@ -1133,11 +1276,26 @@ def main():
         fallbacks=[CommandHandler("cancelar", cancelar)],
     )
 
+    # Nueva cuenta
+    conv_nueva_cuenta = ConversationHandler(
+        entry_points=[
+            CommandHandler("nuevacuenta", cmd_nueva_cuenta),
+            CallbackQueryHandler(cmd_nueva_cuenta, pattern="^iniciar_nueva_cuenta$")
+        ],
+        states={
+            NUEVA_CUENTA_NOMBRE: [MessageHandler(filters.TEXT & ~filters.COMMAND, nueva_cuenta_nombre_handler)],
+            NUEVA_CUENTA_SALDO: [MessageHandler(filters.TEXT & ~filters.COMMAND, nueva_cuenta_saldo_handler)]
+        },
+        fallbacks=[CommandHandler("cancelar", cancelar)],
+    )
+
     app.add_handler(conv_voucher)
     app.add_handler(conv_ingreso)
     app.add_handler(conv_pago_fijo)
+    app.add_handler(conv_nueva_cuenta)
     app.add_handler(CallbackQueryHandler(handle_callback))
     app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("cuentas", lambda update, ctx: mis_cuentas_cmd(update, ctx)))
     app.add_handler(CommandHandler("resumen", resumen))
     app.add_handler(CommandHandler("categorias", categorias))
     app.add_handler(CommandHandler("historial", historial))
