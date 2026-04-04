@@ -147,6 +147,66 @@ def actualizar_medio_transaccion(trans_id: int, usuario_id: int, medio: str):
             conn.commit()
 
 
+def obtener_tendencia_gastos(usuario_id: int) -> dict:
+    from datetime import datetime
+    with db_pool.connection() as conn:
+        with conn.cursor() as cur:
+            hoy = datetime.now()
+            mes_actual = hoy.month
+            anio_actual = hoy.year
+            dia_actual = hoy.day
+            
+            if mes_actual == 1:
+                mes_pasado = 12
+                anio_pasado = anio_actual - 1
+            else:
+                mes_pasado = mes_actual - 1
+                anio_pasado = anio_actual
+
+            # Gasto actual hasta hoy
+            cur.execute("""
+                SELECT COALESCE(SUM(monto::numeric), 0) FROM transacciones 
+                WHERE usuario_id=%s AND EXTRACT(YEAR FROM fecha) = %s AND EXTRACT(MONTH FROM fecha) = %s
+                AND EXTRACT(DAY FROM fecha) <= %s AND categoria != 'Transferencia'
+            """, (usuario_id, anio_actual, mes_actual, dia_actual))
+            gasto_actual = cur.fetchone()[0]
+
+            # Gasto mes pasado hasta el mismo día
+            cur.execute("""
+                SELECT COALESCE(SUM(monto::numeric), 0) FROM transacciones 
+                WHERE usuario_id=%s AND EXTRACT(YEAR FROM fecha) = %s AND EXTRACT(MONTH FROM fecha) = %s
+                AND EXTRACT(DAY FROM fecha) <= %s AND categoria != 'Transferencia'
+            """, (usuario_id, anio_pasado, mes_pasado, dia_actual))
+            gasto_pasado = cur.fetchone()[0]
+
+            # Desglose semanal del mes actual
+            cur.execute("""
+                SELECT 
+                    CASE 
+                        WHEN EXTRACT(DAY FROM fecha) <= 7 THEN 1
+                        WHEN EXTRACT(DAY FROM fecha) <= 14 THEN 2
+                        WHEN EXTRACT(DAY FROM fecha) <= 21 THEN 3
+                        ELSE 4
+                    END as semana,
+                    COALESCE(SUM(monto::numeric), 0)
+                FROM transacciones
+                WHERE usuario_id=%s AND EXTRACT(YEAR FROM fecha) = %s AND EXTRACT(MONTH FROM fecha) = %s
+                AND categoria != 'Transferencia'
+                GROUP BY semana
+                ORDER BY semana
+            """, (usuario_id, anio_actual, mes_actual))
+            
+            semanas = {1: 0.0, 2: 0.0, 3: 0.0, 4: 0.0}
+            for row in cur.fetchall():
+                semanas[int(row[0])] = float(row[1])
+
+            return {
+                "gasto_actual": float(gasto_actual),
+                "gasto_pasado": float(gasto_pasado),
+                "semanas": semanas,
+                "dia_actual": dia_actual
+            }
+
 def obtener_total_mes(usuario_id: int, cuenta_id=None) -> float:
     with db_pool.connection() as conn:
         with conn.cursor() as cur:
@@ -295,11 +355,14 @@ def obtener_ultimas_transacciones(usuario_id: int, limite: int = 5, offset: int 
         with conn.cursor() as cur:
             cur.execute(
                 """
-                SELECT id, monto, descripcion, categoria, medio, fecha
+                SELECT id, monto, descripcion, categoria, medio, fecha, 'gasto' as tipo
                 FROM transacciones WHERE usuario_id=%s
+                UNION ALL
+                SELECT id, monto, descripcion, categoria, NULL as medio, fecha, 'ingreso' as tipo
+                FROM ingresos WHERE usuario_id=%s
                 ORDER BY fecha DESC LIMIT %s OFFSET %s
                 """,
-                (usuario_id, limite, offset)
+                (usuario_id, usuario_id, limite, offset)
             )
             rows = cur.fetchall()
             return rows
@@ -326,6 +389,29 @@ def editar_transaccion(transaccion_id: int, usuario_id: int, monto: float, descr
                 WHERE id=%s AND usuario_id=%s
                 """,
                 (monto, descripcion, categoria, transaccion_id, usuario_id)
+            )
+            conn.commit()
+
+def eliminar_ingreso(ingreso_id: int, usuario_id: int) -> bool:
+    with db_pool.connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "DELETE FROM ingresos WHERE id=%s AND usuario_id=%s",
+                (ingreso_id, usuario_id)
+            )
+            eliminado = cur.rowcount > 0
+            conn.commit()
+            return eliminado
+
+def editar_ingreso(ingreso_id: int, usuario_id: int, monto: float, descripcion: str, categoria: str):
+    with db_pool.connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                UPDATE ingresos SET monto=%s, descripcion=%s, categoria=%s
+                WHERE id=%s AND usuario_id=%s
+                """,
+                (monto, descripcion, categoria, ingreso_id, usuario_id)
             )
             conn.commit()
 

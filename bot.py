@@ -41,6 +41,7 @@ from db import (
     obtener_ultimas_transacciones,
     eliminar_transaccion,
     editar_transaccion,
+    obtener_tendencia_gastos,
     guardar_pago_fijo,
     obtener_pagos_fijos,
     eliminar_pago_fijo,
@@ -932,32 +933,63 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # ── Eliminar transacción ───────────────────────────────────────────
     elif accion.startswith("eliminar_"):
-        trans_id = int(accion.replace("eliminar_", ""))
-        botones = [
-            [
-                InlineKeyboardButton("✅ Sí, eliminar", callback_data=f"conf_elim_{trans_id}"),
-                InlineKeyboardButton("❌ No, cancelar", callback_data="ver_editar")
+        partes = accion.split("_")
+        if len(partes) == 3:
+            tipo = partes[1]
+            trans_id = int(partes[2])
+            botones = [
+                [
+                    InlineKeyboardButton("✅ Sí", callback_data=f"conf_elim_{tipo}_{trans_id}"),
+                    InlineKeyboardButton("❌ No", callback_data="ver_editar")
+                ]
             ]
-        ]
-        await safe_edit(query, f"⚠️ ¿Estás seguro de que deseas eliminar la transacción #{trans_id}?", reply_markup=InlineKeyboardMarkup(botones))
+            await safe_edit(query, f"⚠️ ¿Eliminar el {tipo} #{trans_id}?", reply_markup=InlineKeyboardMarkup(botones))
+        else:
+            trans_id = int(accion.replace("eliminar_", ""))
+            botones = [
+                [
+                    InlineKeyboardButton("✅ Sí", callback_data=f"conf_elim_gasto_{trans_id}"),
+                    InlineKeyboardButton("❌ No", callback_data="ver_editar")
+                ]
+            ]
+            await safe_edit(query, f"⚠️ ¿Eliminar transacción #{trans_id}?", reply_markup=InlineKeyboardMarkup(botones))
 
     elif accion.startswith("conf_elim_"):
-        trans_id = int(accion.replace("conf_elim_", ""))
-        eliminado = eliminar_transaccion(trans_id, usuario_id)
-        if eliminado:
-            await safe_edit(query, f"🗑️ Transacción #{trans_id} eliminada.", reply_markup=menu_principal())
+        partes = accion.split("_")
+        if len(partes) == 4:
+            tipo = partes[2]
+            trans_id = int(partes[3])
+            if tipo == "gasto":
+                eliminado = eliminar_transaccion(trans_id, usuario_id)
+            else:
+                eliminado = eliminar_ingreso(trans_id, usuario_id)
+            if eliminado:
+                await safe_edit(query, f"🗑️ {tipo.capitalize()} #{trans_id} eliminado.", reply_markup=menu_principal())
+            else:
+                await safe_edit(query, "⚠️ No se pudo eliminar.", reply_markup=menu_principal())
         else:
-            await safe_edit(query, "⚠️ No se pudo eliminar.", reply_markup=menu_principal())
+            trans_id = int(accion.replace("conf_elim_", ""))
+            eliminado = eliminar_transaccion(trans_id, usuario_id)
+            if eliminado:
+                await safe_edit(query, f"🗑️ Transacción #{trans_id} eliminada.", reply_markup=menu_principal())
+            else:
+                await safe_edit(query, "⚠️ No se pudo eliminar.", reply_markup=menu_principal())
 
     # ── Iniciar edición ────────────────────────────────────────────────
     elif accion.startswith("editar_"):
-        trans_id = int(accion.replace("editar_", ""))
-        edicion_pendiente[query.from_user.id] = {"id": trans_id}
+        partes = accion.split("_")
+        if len(partes) == 3:
+            tipo = partes[1]
+            trans_id = int(partes[2])
+        else:
+            tipo = "gasto"
+            trans_id = int(accion.replace("editar_", ""))
+            
+        edicion_pendiente[query.from_user.id] = {"id": trans_id, "tipo": tipo}
         await query.message.reply_text(
-            f"✏️ Editando transacción *#{trans_id}*\n\n"
-            f"Escribe los nuevos datos como quieras, por ejemplo:\n"
+            f"✏️ Editando {tipo} *#{trans_id}*\n\n"
+            f"Escribe los nuevos datos, por ejemplo:\n"
             f"_\"50 comida de gato\"_\n"
-            f"_\"35.50 almuerzo con el equipo\"_\n"
             f"_\"120 polo de trabajo\"_\n\n"
             f"/cancelar para salir.",
             parse_mode="Markdown"
@@ -1067,7 +1099,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif accion == "ajustes_mas":
         teclado = InlineKeyboardMarkup([
             [
-                InlineKeyboardButton("📊 Resumen Mensual", callback_data="resumen"),
+                InlineKeyboardButton("📈 Tendencia Mensual", callback_data="resumen"),
                 InlineKeyboardButton("📥 Exportar Excel", callback_data="exportar"),
             ],
             [
@@ -1102,13 +1134,14 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             
         texto = f"✏️ *Gestionar transacciones (Pág {page+1}):*\n─────────────────────\n\n"
         botones = []
-        for id_, monto, desc, cat, medio, fecha in filas_mostrar:
+        for id_, monto, desc, cat, medio, fecha, tipo in filas_mostrar:
             emoji = EMOJIS_CATEGORIA.get(cat, "📦")
+            tipo_icon = "🟢" if tipo == "ingreso" else "🔴"
             fecha_str = fecha.strftime("%d/%m %H:%M") if fecha else "—"
-            texto += f"`#{id_}` {emoji} S/ {float(monto):.2f} — {desc}\n📅 {fecha_str}\n\n"
+            texto += f"`#{id_}` {tipo_icon} {emoji} S/ {float(monto):.2f} — {desc}\n📅 {fecha_str}\n\n"
             botones.append([
-                InlineKeyboardButton(f"✏️ Editar #{id_}", callback_data=f"editar_{id_}"),
-                InlineKeyboardButton(f"🗑️ Eliminar #{id_}", callback_data=f"eliminar_{id_}"),
+                InlineKeyboardButton(f"✏️ Editar", callback_data=f"editar_{tipo}_{id_}"),
+                InlineKeyboardButton(f"🗑️ Eliminar", callback_data=f"eliminar_{tipo}_{id_}"),
             ])
             
         nav_botones = []
@@ -1130,7 +1163,36 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
     elif accion == "resumen":
-        texto = await mostrar_resumen(usuario_id)
+        datos = obtener_tendencia_gastos(usuario_id)
+        g_act = datos["gasto_actual"]
+        g_pas = datos["gasto_pasado"]
+        dia = datos["dia_actual"]
+        semanas = datos["semanas"]
+        
+        texto = f"📊 *Tendencia Mensual (Día {dia})*\n─────────────────────\n\n"
+        texto += f"📈 *Gasto Acumulado (1 al {dia})*\n"
+        texto += f"   Este mes:  S/ {g_act:.2f}\n"
+        texto += f"   Mes pasado: S/ {g_pas:.2f}\n\n"
+        
+        if g_pas > 0:
+            var = ((g_act - g_pas) / g_pas) * 100
+            if var > 0:
+                texto += f"⚠️ Estás gastando un *{var:.1f}% MÁS* rápido que el mes pasado a estas fechas.\n\n"
+            elif var < 0:
+                texto += f"✅ ¡Bien! Vas *{abs(var):.1f}% MÁS LENTO* en gastos frente al mes pasado.\n\n"
+            else:
+                texto += f"⚖️ Vas al mismo ritmo exacto que el mes pasado.\n\n"
+        elif g_act > 0 and g_pas == 0:
+            texto += f"⚠️ Es tu primer mes o no hay datos previos para comparar.\n\n"
+        else:
+            texto += f"💤 Aún no hay gastos registrados este mes.\n\n"
+            
+        texto += "📅 *Desglose Semanal (Este mes)*\n"
+        texto += f"   Semana 1 (Días 1-7):   S/ {semanas[1]:.2f}\n"
+        texto += f"   Semana 2 (Días 8-14):  S/ {semanas[2]:.2f}\n"
+        texto += f"   Semana 3 (Días 15-21): S/ {semanas[3]:.2f}\n"
+        texto += f"   Semana 4 (Días 22+):   S/ {semanas[4]:.2f}\n"
+        
         await safe_edit(query, texto, parse_mode="Markdown", reply_markup=menu_principal())
             
     elif accion == "categorias":
@@ -1331,7 +1393,9 @@ async def handle_texto_router(update: Update, context: ContextTypes.DEFAULT_TYPE
 
     # 2. Edición pendiente
     if tid in edicion_pendiente:
-        trans_id = edicion_pendiente.pop(tid)["id"]
+        info_edicion = edicion_pendiente.pop(tid)
+        trans_id = info_edicion["id"]
+        tipo = info_edicion.get("tipo", "gasto")
         try:
             datos = extraer_edicion(update.message.text.strip())
             monto = datos.get("monto", 0)
@@ -1343,42 +1407,52 @@ async def handle_texto_router(update: Update, context: ContextTypes.DEFAULT_TYPE
                     "⚠️ No pude detectar el monto. Intenta de nuevo, ej:\n_\"50 comida de gato\"_",
                     parse_mode="Markdown"
                 )
-                edicion_pendiente[tid] = {"id": trans_id}
+                edicion_pendiente[tid] = {"id": trans_id, "tipo": tipo}
                 return
 
-            editar_transaccion(trans_id, obtener_o_crear_usuario(tid), monto, descripcion, categoria)
-
-            # Preguntar medio de pago
-            teclado_medio = InlineKeyboardMarkup([
-                [
-                    InlineKeyboardButton("📱 Yape", callback_data=f"edit_medio_{trans_id}_Yape"),
-                    InlineKeyboardButton("💙 Plin", callback_data=f"edit_medio_{trans_id}_Plin"),
-                ],
-                [
-                    InlineKeyboardButton("💵 Efectivo", callback_data=f"edit_medio_{trans_id}_Efectivo"),
-                    InlineKeyboardButton("💳 Tarjeta", callback_data=f"edit_medio_{trans_id}_Tarjeta"),
-                ],
-                [
-                    InlineKeyboardButton("🏦 Transferencia", callback_data=f"edit_medio_{trans_id}_Transferencia"),
-                    InlineKeyboardButton("⏭️ Mantener", callback_data=f"edit_medio_{trans_id}_skip"),
-                ],
-            ])
-            emoji = EMOJIS_CATEGORIA.get(categoria, "📦")
-            await update.message.reply_text(
-                f"✅ *Transacción #{trans_id} actualizada*\n\n"
-                f"💵 S/ {float(monto):.2f}\n"
-                f"📝 {descripcion}\n"
-                f"{emoji} {categoria}\n\n"
-                f"¿Actualizar el medio de pago?",
-                parse_mode="Markdown",
-                reply_markup=teclado_medio
-            )
+            if tipo == "gasto":
+                editar_transaccion(trans_id, obtener_o_crear_usuario(tid), monto, descripcion, categoria)
+                teclado_medio = InlineKeyboardMarkup([
+                    [
+                        InlineKeyboardButton("📱 Yape", callback_data=f"edit_medio_{trans_id}_Yape"),
+                        InlineKeyboardButton("💙 Plin", callback_data=f"edit_medio_{trans_id}_Plin"),
+                    ],
+                    [
+                        InlineKeyboardButton("💵 Efectivo", callback_data=f"edit_medio_{trans_id}_Efectivo"),
+                        InlineKeyboardButton("💳 Tarjeta", callback_data=f"edit_medio_{trans_id}_Tarjeta"),
+                    ],
+                    [
+                        InlineKeyboardButton("🏦 Transferencia", callback_data=f"edit_medio_{trans_id}_Transferencia"),
+                        InlineKeyboardButton("⏭️ Mantener", callback_data=f"edit_medio_{trans_id}_skip"),
+                    ],
+                ])
+                emoji = EMOJIS_CATEGORIA.get(categoria, "📦")
+                await update.message.reply_text(
+                    f"✅ *Gasto #{trans_id} actualizado*\n\n"
+                    f"💵 S/ {float(monto):.2f}\n"
+                    f"📝 {descripcion}\n"
+                    f"{emoji} {categoria}\n\n"
+                    f"¿Actualizar el medio de pago?",
+                    parse_mode="Markdown",
+                    reply_markup=teclado_medio
+                )
+            else:
+                editar_ingreso(trans_id, obtener_o_crear_usuario(tid), monto, descripcion, categoria)
+                emoji = EMOJIS_CATEGORIA.get(categoria, "📦")
+                await update.message.reply_text(
+                    f"✅ *Ingreso #{trans_id} actualizado*\n\n"
+                    f"💵 S/ {float(monto):.2f}\n"
+                    f"📝 {descripcion}\n"
+                    f"{emoji} {categoria}\n",
+                    parse_mode="Markdown",
+                    reply_markup=menu_principal()
+                )
         except Exception as e:
             await update.message.reply_text(
-                "⚠️ No pude interpretar los datos. Intenta de nuevo, ej:\n_\"50 comida de gato\"_",
+                "⚠️ No pude interpretar los datos. Intenta de nuevo.",
                 parse_mode="Markdown"
             )
-            edicion_pendiente[tid] = {"id": trans_id}
+            edicion_pendiente[tid] = {"id": trans_id, "tipo": tipo}
         return
     # Pago fijo pendiente desde botón
     if tid in pago_fijo_pendiente:
