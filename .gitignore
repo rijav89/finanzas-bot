@@ -2,6 +2,8 @@
  
 # Credenciales — NUNCA subir esto
 .env
+*service-account*.json
+sacred-footing-489922-n6-b393bec9efea.json
  
 # Entorno virtual
 venv/
