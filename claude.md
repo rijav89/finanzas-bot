@@ -114,4 +114,15 @@ Estado servidor backend: nginx + python3-venv + certbot instalados; pendiente cr
 Git: usa el Git embebido de GitHub Desktop (`%LOCALAPPDATA%\GitHubDesktop\app-*\resources\app\git\cmd\git.exe`), no hay Git instalado por separado en el PATH del sistema. Las credenciales de GitHub para `rijav89` ya están en el Credential Manager de Windows (`wincred`).
 `.env` de `bot/` no existe en este equipo (está en `.gitignore`) — hay que recrearlo con los valores reales antes de correr el bot localmente.
 
-⚠️ **Pendiente crítico**: el servidor de producción (129.153.191.245) despliega esperando `bot.py` en la raíz del repo. Tras la reorganización a monorepo, `bot.py` ahora vive en `bot/bot.py`. Hay que ajustar el proceso de deploy del servidor (ruta de `git pull`/`WorkingDirectory` del servicio systemd `finanzasbot`) antes de volver a desplegar desde este repo, o el bot dejará de actualizarse correctamente.
+## Deploy en producción (servidor bot, 129.153.191.245)
+Ajustado 2026-08-03 para el monorepo:
+- `/home/ubuntu/finanzas-bot/` sigue siendo la raíz del repo git (mismo `git pull`)
+- El código ahora queda en `/home/ubuntu/finanzas-bot/bot/` tras el pull
+- `.env` y `venv/` permanecen en la raíz (`/home/ubuntu/finanzas-bot/.env` y `/home/ubuntu/finanzas-bot/venv/`), no se movieron — no están en git
+- `/etc/systemd/system/finanzasbot.service` actualizado: `WorkingDirectory=/home/ubuntu/finanzas-bot/bot`, `EnvironmentFile` y `ExecStart` (venv) siguen apuntando a rutas absolutas en la raíz
+- Backup pre-migración en `/home/ubuntu/finanzas-bot-backup-20260803.tar.gz`
+- Flujo de deploy futuro: `cd /home/ubuntu/finanzas-bot && git pull && sudo systemctl restart finanzasbot`
+
+⚠️ **Pendiente**: el `git remote` del servidor tenía un Personal Access Token de GitHub embebido en texto plano en la URL (`origin`). Recomendado rotarlo en GitHub → Settings → Developer settings → Personal access tokens, y reconfigurar el remote sin el token embebido.
+
+⚠️ **Nota**: se encontraron y rescataron cambios de producción nunca commiteados (la migración completa a Qwen en `categorias.py`, `config.py`, `gastos_manual.py`, `ocr.py`) — ya están en GitHub. Quedaron además unos archivos `.save` sueltos en el servidor (`.env.save`, `gastos_manual.py.save`) de ediciones manuales anteriores, sin revisar.
