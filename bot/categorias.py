@@ -1,46 +1,31 @@
-# categorias.py — FinanzasBot v2.4
-# Categorización con IA usando Gemini
+# categorias.py — FinanzasBot v3.1
+# Categorización con Qwen (OpenAI-compatible API)
 
-from google import genai
-from google.genai import types
-from config import GEMINI_API_KEY
+from openai import OpenAI
+from config import DASHSCOPE_API_KEY, QWEN_BASE_URL, QWEN_MODEL_TEXT
 
-client = genai.Client(api_key=GEMINI_API_KEY)
+client = OpenAI(
+    api_key=DASHSCOPE_API_KEY,
+    base_url=QWEN_BASE_URL,
+)
 
 CATEGORIAS_DISPONIBLES = [
-    "Comida",
-    "Supermercado",
-    "Transporte",
-    "Servicios",
-    "Salud",
-    "Educacion",
-    "Ropa",
-    "Entretenimiento",
-    "Tecnologia",
-    "Finanzas",
-    "Mascotas",
-    "Belleza",
-    "Hogar",
-    "Otros",
+    "Comida", "Supermercado", "Transporte", "Servicios", "Salud",
+    "Educacion", "Ropa", "Entretenimiento", "Tecnologia", "Finanzas",
+    "Mascotas", "Belleza", "Hogar", "Otros",
 ]
 
-PROMPT_CATEGORIA = """
-Eres un asistente de finanzas personales para usuarios en Perú.
+PROMPT_CATEGORIA = """Eres un asistente de finanzas personales para usuarios en Perú.
 Basándote en la siguiente descripción de un gasto, clasifícalo en UNA de estas categorías:
 
 {categorias}
 
 Descripción del gasto: "{descripcion}"
 
-Responde ÚNICAMENTE con el nombre exacto de la categoría, sin explicación ni texto adicional.
-"""
+Responde ÚNICAMENTE con el nombre exacto de la categoría, sin explicación ni texto adicional."""
 
 
 def clasificar_gasto(descripcion: str) -> str:
-    """
-    Clasifica un gasto usando Gemini IA basándose en la descripción.
-    Si la descripción está vacía o es genérica, retorna "Otros".
-    """
     if not descripcion or descripcion.strip().lower() in [
         "sin descripcion", "sin descripción", "", "."
     ]:
@@ -51,16 +36,18 @@ def clasificar_gasto(descripcion: str) -> str:
         descripcion=descripcion.strip(),
     )
 
-    response = client.models.generate_content(
-        model="gemini-2.5-flash",
-        contents=[prompt],
-    )
+    try:
+        response = client.chat.completions.create(
+            model=QWEN_MODEL_TEXT,
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.1,
+        )
+        categoria = response.choices[0].message.content.strip()
 
-    categoria = response.text.strip()
-
-    # Validar que la respuesta sea una categoría válida
-    for c in CATEGORIAS_DISPONIBLES:
-        if c.lower() == categoria.lower():
-            return c
+        for c in CATEGORIAS_DISPONIBLES:
+            if c.lower() == categoria.lower():
+                return c
+    except Exception as e:
+        print(f"[CATEGORIA ERROR] {e}")
 
     return "Otros"

@@ -10,7 +10,7 @@ Repo: rijav89/finanzas-bot (privado). Versión activa: v3.1.
 
 **Servidor bot** (129.153.191.245)
 - Usuario: ubuntu · OS: Ubuntu 22.04 · Shape: VM.Standard.E2.1.Micro (Oracle Cloud Always Free) · AD-2
-- Key SSH: `E:\Proyectos\Finanzas Bot\ssh-key-2026-03-19.key`
+- Key SSH: `E:\Proyectos\Finanzas Bot\Keys\ssh-key-2026-03-19.key`
 - Servicio systemd: `finanzasbot` (`sudo systemctl restart finanzasbot`)
 - Directorio: `/home/ubuntu/finanzas-bot`, venv en `/home/ubuntu/finanzas-bot/venv`
 - Backups de versiones anteriores en `/home/ubuntu/finanzas-bot/Backup/`
@@ -106,10 +106,12 @@ Estado servidor backend: nginx + python3-venv + certbot instalados; pendiente cr
 - ⚠️ El repo tiene commiteada una service account key de Google Cloud (`sacred-footing-489922-n6-b393bec9efea.json`, proyecto legacy de Gemini) — no está en `.gitignore`. Pendiente decidir si rotarla/revocarla.
 
 ## Estructura local del proyecto (este equipo)
-`E:\Proyectos\Finanzas Bot\dev\`
-- `bot/` — clon del repo `rijav89/finanzas-bot` (rama `main`), código del bot de Telegram
+`E:\Proyectos\Finanzas Bot\dev\` es ahora la raíz del repo `rijav89/finanzas-bot` (monorepo, reorganizado 2026-08-02):
+- `bot/` — código del bot de Telegram (antes era la raíz del repo)
 - `panel-web/` — código del panel web (FastAPI + Alpine.js), aún por construir
 - `claude.md` — este archivo
 
 Git: usa el Git embebido de GitHub Desktop (`%LOCALAPPDATA%\GitHubDesktop\app-*\resources\app\git\cmd\git.exe`), no hay Git instalado por separado en el PATH del sistema. Las credenciales de GitHub para `rijav89` ya están en el Credential Manager de Windows (`wincred`).
 `.env` de `bot/` no existe en este equipo (está en `.gitignore`) — hay que recrearlo con los valores reales antes de correr el bot localmente.
+
+⚠️ **Pendiente crítico**: el servidor de producción (129.153.191.245) despliega esperando `bot.py` en la raíz del repo. Tras la reorganización a monorepo, `bot.py` ahora vive en `bot/bot.py`. Hay que ajustar el proceso de deploy del servidor (ruta de `git pull`/`WorkingDirectory` del servicio systemd `finanzasbot`) antes de volver a desplegar desde este repo, o el bot dejará de actualizarse correctamente.
