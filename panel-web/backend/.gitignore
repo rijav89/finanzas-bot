@@ -1,0 +1,16 @@
+# Credenciales — NUNCA subir esto
+.env
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+*.egg-info/
+build/
+dist/
+
+# Tests
+.pytest_cache/
+.coverage
