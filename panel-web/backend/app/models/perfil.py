@@ -1,9 +1,14 @@
 from datetime import date, datetime
 from decimal import Decimal
 
-from sqlalchemy import TIMESTAMP, Boolean, CheckConstraint, Date, ForeignKey, Integer, Numeric, Text, text
+from sqlalchemy import (
+    JSON, TIMESTAMP, Boolean, CheckConstraint, Date, ForeignKey, Integer, Numeric, Text, func, text,
+)
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
+
+# JSONB en Postgres, JSON plano en SQLite (tests)
+JsonPortable = JSON().with_variant(JSONB(), "postgresql")
 
 from .base import Base
 
@@ -21,10 +26,10 @@ class PerfilFinanciero(Base):
     moneda: Mapped[str] = mapped_column(Text, nullable=False, server_default=text("'PEN'"))
     perfil_riesgo: Mapped[str | None] = mapped_column(Text)
     contexto_ia: Mapped[dict] = mapped_column(
-        JSONB, nullable=False, server_default=text("'{}'::jsonb")
+        JsonPortable, nullable=False, server_default=text("'{}'")
     )
     actualizado_en: Mapped[datetime] = mapped_column(
-        TIMESTAMP(timezone=True), nullable=False, server_default=text("now()")
+        TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
     )
 
 

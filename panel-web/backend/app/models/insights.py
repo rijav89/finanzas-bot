@@ -1,8 +1,12 @@
 from datetime import date, datetime
 
-from sqlalchemy import TIMESTAMP, Boolean, CheckConstraint, Date, ForeignKey, Index, Integer, Text, text
+from sqlalchemy import (
+    JSON, TIMESTAMP, Boolean, CheckConstraint, Date, ForeignKey, Index, Integer, Text, func, text,
+)
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
+
+JsonPortable = JSON().with_variant(JSONB(), "postgresql")
 
 from .base import Base
 
@@ -24,12 +28,12 @@ class InsightIA(Base):
     periodo_inicio: Mapped[date] = mapped_column(Date, nullable=False)
     periodo_fin: Mapped[date] = mapped_column(Date, nullable=False)
     # {detalle, metrica, delta_pct, categoria, evidencia}
-    payload: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    payload: Mapped[dict] = mapped_column(JsonPortable, nullable=False)
     modelo: Mapped[str] = mapped_column(Text, nullable=False)
     tokens_usados: Mapped[int | None] = mapped_column(Integer)
     leido: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))
     creado_en: Mapped[datetime] = mapped_column(
-        TIMESTAMP(timezone=True), nullable=False, server_default=text("now()")
+        TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
     )
 
     __table_args__ = (

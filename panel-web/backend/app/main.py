@@ -1,10 +1,14 @@
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from sqlalchemy import text
+from sqlalchemy.exc import OperationalError
 
+from app.api.v1 import auth, cuentas, dashboard, movimientos
 from app.db.session import engine
+from app.schemas.common import err
 
 
 @asynccontextmanager
@@ -21,6 +25,32 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+app.include_router(auth.router, prefix="/api/v1")
+app.include_router(cuentas.router, prefix="/api/v1")
+app.include_router(movimientos.router, prefix="/api/v1")
+app.include_router(dashboard.router, prefix="/api/v1")
+
+
+@app.exception_handler(HTTPException)
+async def http_exc_handler(request: Request, exc: HTTPException):
+    respuesta = JSONResponse(status_code=exc.status_code, content=err(str(exc.detail)))
+    # Propagar Set-Cookie u otros headers que el endpoint haya adjuntado
+    if exc.headers:
+        for k, v in exc.headers.items():
+            respuesta.headers[k] = v
+    return respuesta
+
+
+@app.exception_handler(RequestValidationError)
+async def validation_exc_handler(request: Request, exc: RequestValidationError):
+    return JSONResponse(status_code=422, content=err("payload_invalido"))
+
+
+@app.exception_handler(OperationalError)
+async def db_exc_handler(request: Request, exc: OperationalError):
+    # Supabase free pausa proyectos inactivos: 503 explícito en vez de 500 opaco
+    return JSONResponse(status_code=503, content=err("db_unavailable"))
+
 
 @app.get("/api/v1/health")
 async def health():
@@ -28,6 +58,5 @@ async def health():
         async with engine.connect() as conn:
             await conn.execute(text("SELECT 1"))
     except Exception:
-        # Supabase free pausa proyectos inactivos; responder 503 explícito en vez de colgarse
-        return JSONResponse(status_code=503, content={"data": None, "error": "db_unavailable"})
+        return JSONResponse(status_code=503, content=err("db_unavailable"))
     return {"data": {"db": "ok", "version": app.version}, "error": None}

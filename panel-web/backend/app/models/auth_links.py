@@ -1,8 +1,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import TIMESTAMP, Boolean, ForeignKey, Index, Integer, Text, text
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy import TIMESTAMP, Boolean, ForeignKey, Index, Integer, Text, Uuid, func, text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from .base import Base
@@ -17,9 +16,9 @@ class VinculoAuth(Base):
     usuario_id: Mapped[int] = mapped_column(
         ForeignKey("usuarios.id", ondelete="CASCADE"), nullable=False, unique=True
     )
-    auth_uid: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False, unique=True)
+    auth_uid: Mapped[uuid.UUID] = mapped_column(Uuid, nullable=False, unique=True)
     creado_en: Mapped[datetime] = mapped_column(
-        TIMESTAMP(timezone=True), nullable=False, server_default=text("now()")
+        TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
     )
 
 
@@ -39,7 +38,7 @@ class CodigoVinculacion(Base):
     expira_en: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), nullable=False)
     usado: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))
     creado_en: Mapped[datetime] = mapped_column(
-        TIMESTAMP(timezone=True), nullable=False, server_default=text("now()")
+        TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
     )
 
     __table_args__ = (
