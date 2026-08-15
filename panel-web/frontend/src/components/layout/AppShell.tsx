@@ -1,5 +1,5 @@
-import { LayoutDashboard, ListOrdered, LogOut, Minus, Plus, Search, Wallet, X } from "lucide-react";
-import { useState, type ReactNode } from "react";
+import { LayoutDashboard, ListOrdered, LogOut, Plus, Search, Wallet } from "lucide-react";
+import type { ReactNode } from "react";
 import { NavLink } from "react-router-dom";
 
 import { useLogout } from "@/api/queries";
@@ -15,7 +15,6 @@ const NAV = [
 export function AppShell({ children }: { children: ReactNode }) {
   const setPaleta = useUiStore((s) => s.setPaletaAbierta);
   const abrirCaptura = useUiStore((s) => s.abrirCaptura);
-  const [fabAbierto, setFabAbierto] = useState(false);
   const logout = useLogout();
 
   return (
@@ -98,73 +97,14 @@ export function AppShell({ children }: { children: ReactNode }) {
         ))}
       </nav>
 
-      {/* FAB expandible: gasto o ingreso, como el menú del bot */}
-      {fabAbierto && (
-        <div
-          className="fixed inset-0 z-30 bg-black/20"
-          onClick={() => setFabAbierto(false)}
-          aria-hidden
-        />
-      )}
-      <div className="fixed bottom-20 right-4 z-40 flex flex-col items-end gap-3 lg:bottom-8 lg:right-8">
-        {fabAbierto && (
-          <>
-            <AccionFab
-              etiqueta="Ingreso"
-              icono={Plus}
-              clase="bg-good-text"
-              onClick={() => {
-                setFabAbierto(false);
-                abrirCaptura("ingreso");
-              }}
-            />
-            <AccionFab
-              etiqueta="Gasto"
-              icono={Minus}
-              clase="bg-accent"
-              onClick={() => {
-                setFabAbierto(false);
-                abrirCaptura("gasto");
-              }}
-            />
-          </>
-        )}
-        <button
-          aria-label={fabAbierto ? "Cerrar acciones" : "Registrar movimiento"}
-          aria-expanded={fabAbierto}
-          onClick={() => setFabAbierto((v) => !v)}
-          className={cn(
-            "flex size-14 items-center justify-center rounded-full text-white shadow-lg transition-transform",
-            fabAbierto ? "bg-ink-3 rotate-90" : "bg-accent",
-          )}
-        >
-          {fabAbierto ? <X size={24} /> : <Plus size={24} />}
-        </button>
-      </div>
+      {/* Un solo disparador: el tipo (gasto/ingreso) se elige dentro del modal */}
+      <button
+        aria-label="Registrar movimiento"
+        onClick={() => abrirCaptura("gasto")}
+        className="fixed bottom-20 right-4 z-30 flex size-14 items-center justify-center rounded-full bg-accent text-white shadow-lg lg:bottom-8 lg:right-8"
+      >
+        <Plus size={24} />
+      </button>
     </div>
-  );
-}
-
-function AccionFab({
-  etiqueta,
-  icono: Icono,
-  clase,
-  onClick,
-}: {
-  etiqueta: string;
-  icono: typeof Plus;
-  clase: string;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      onClick={onClick}
-      className="flex items-center gap-3 rounded-full bg-card py-1.5 pl-4 pr-1.5 shadow-lg ring-1 ring-[var(--border-ring)]"
-    >
-      <span className="text-sm font-medium">{etiqueta}</span>
-      <span className={cn("flex size-11 items-center justify-center rounded-full text-white", clase)}>
-        <Icono size={20} />
-      </span>
-    </button>
   );
 }

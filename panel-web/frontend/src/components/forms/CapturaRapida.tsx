@@ -1,4 +1,4 @@
-import { ChevronDown } from "lucide-react";
+import { ArrowDownLeft, ArrowUpRight, ChevronDown } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { useCrearMovimiento, useCuentas } from "@/api/queries";
@@ -95,32 +95,50 @@ export function CapturaRapida() {
         }}
         className="w-full max-w-lg rounded-t-3xl bg-card p-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))] shadow-2xl ring-1 ring-[var(--border-ring)] sm:rounded-3xl sm:p-6 sm:pb-6"
       >
-        {/* Tipo — igual que el bot: Gasto / Ingreso */}
+        {/* Tipo — el color hace evidente la dirección del dinero de un vistazo */}
         <div
           role="tablist"
           aria-label="Tipo de movimiento"
           className="mx-auto flex w-full max-w-xs rounded-xl bg-page p-1"
         >
-          {(["gasto", "ingreso"] as const).map((t) => (
-            <button
-              key={t}
-              type="button"
-              role="tab"
-              aria-selected={tipo === t}
-              onClick={() => cambiarTipo(t)}
-              className={cn(
-                "h-10 flex-1 rounded-lg text-sm font-medium capitalize transition-colors",
-                tipo === t ? "bg-card text-ink shadow-sm" : "text-ink-3 hover:text-ink-2",
-              )}
-            >
-              {t}
-            </button>
-          ))}
+          {(
+            [
+              { valor: "gasto", etiqueta: "Gasto", Icono: ArrowUpRight },
+              { valor: "ingreso", etiqueta: "Ingreso", Icono: ArrowDownLeft },
+            ] as const
+          ).map(({ valor, etiqueta, Icono }) => {
+            const activo = tipo === valor;
+            return (
+              <button
+                key={valor}
+                type="button"
+                role="tab"
+                aria-selected={activo}
+                onClick={() => cambiarTipo(valor)}
+                className={cn(
+                  "flex h-10 flex-1 items-center justify-center gap-1.5 rounded-lg text-sm font-semibold transition-colors",
+                  !activo && "text-ink-3 hover:text-ink-2",
+                  activo && valor === "gasto" && "bg-critical/15 text-critical",
+                  activo && valor === "ingreso" && "bg-good/15 text-good-text",
+                )}
+              >
+                <Icono size={16} aria-hidden />
+                {etiqueta}
+              </button>
+            );
+          })}
         </div>
 
-        {/* Monto protagonista */}
+        {/* Monto protagonista, teñido según el tipo */}
         <div className="mt-6 flex items-baseline justify-center gap-1.5">
-          <span className="text-2xl text-ink-3">S/</span>
+          <span
+            className={cn(
+              "text-2xl",
+              tipo === "gasto" ? "text-critical/70" : "text-good-text/70",
+            )}
+          >
+            {tipo === "gasto" ? "−" : "+"} S/
+          </span>
           <input
             ref={montoRef}
             autoFocus
@@ -129,12 +147,15 @@ export function CapturaRapida() {
             onChange={(e) => setMonto(e.target.value.replace(",", ".").replace(/[^\d.]/g, ""))}
             placeholder="0.00"
             aria-label="Monto"
-            className="w-44 bg-transparent text-center text-5xl font-semibold tracking-tight text-ink outline-none placeholder:text-ink-3/40"
+            className={cn(
+              "w-40 bg-transparent text-center text-5xl font-semibold tracking-tight outline-none placeholder:text-ink-3/40",
+              tipo === "gasto" ? "text-critical" : "text-good-text",
+            )}
           />
         </div>
 
         {/* Frase Mad Libs */}
-        <p className="mt-6 text-center text-lg leading-[3.25rem] text-ink-2">
+        <p className="mt-5 text-center text-[17px] leading-[2.9rem] text-ink-2">
           {tipo === "gasto" ? "Gasté en " : "Recibí de "}
           <Slot>
             <Select
@@ -161,7 +182,7 @@ export function CapturaRapida() {
               max={hoyISO()}
               onChange={(e) => e.target.value && setFecha(e.target.value)}
               aria-label="Fecha"
-              className="bg-transparent text-base text-ink outline-none [color-scheme:inherit]"
+              className="bg-transparent text-[15px] font-medium text-ink outline-none [color-scheme:inherit]"
             />
           </Slot>
         </p>
@@ -241,12 +262,12 @@ function Select({
     typeof o === "string" ? { valor: o, etiqueta: o } : o,
   );
   return (
-    <span className="relative inline-flex items-center pr-5">
+    <span className="relative inline-flex items-center pr-4">
       <select
         {...props}
         value={valor}
         onChange={(e) => onChange(e.target.value)}
-        className="appearance-none bg-transparent text-base font-medium text-ink outline-none"
+        className="appearance-none bg-transparent text-[15px] font-medium text-ink outline-none"
       >
         {items.map((o) => (
           <option key={o.valor} value={o.valor}>
@@ -255,7 +276,7 @@ function Select({
         ))}
       </select>
       <ChevronDown
-        size={15}
+        size={14}
         aria-hidden
         className="pointer-events-none absolute right-0 text-ink-3"
       />
