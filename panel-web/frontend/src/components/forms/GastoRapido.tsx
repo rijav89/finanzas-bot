@@ -1,3 +1,4 @@
+import { ChevronDown } from "lucide-react";
 import { useEffect, useState } from "react";
 
 import { useCrearGasto, useCuentas } from "@/api/queries";
@@ -5,9 +6,11 @@ import { CATEGORIAS } from "@/api/types";
 import { Boton } from "@/components/ui/Boton";
 import { useUiStore } from "@/stores/uiStore";
 
-/** Formulario conversacional "Mad Libs":
- *  Hoy gasté [S/ __] en [Categoría ▾] pagando con [Cuenta ▾].
- *  Los selectores inline cumplen área táctil de 44px. */
+/** Slot inline del Mad Libs: misma altura (44px táctil), mismo radio y alineación
+ *  para que la frase se lea como texto y no como un formulario desalineado. */
+const SLOT =
+  "inline-flex h-11 items-center rounded-xl bg-page align-middle ring-1 ring-[var(--border-ring)] focus-within:ring-2 focus-within:ring-accent";
+
 export function GastoRapido() {
   const abierto = useUiStore((s) => s.gastoRapidoAbierto);
   const setAbierto = useUiStore((s) => s.setGastoRapidoAbierto);
@@ -41,7 +44,7 @@ export function GastoRapido() {
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-0 sm:items-center sm:p-4"
+      className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 sm:items-center sm:p-4"
       onClick={() => setAbierto(false)}
     >
       <form
@@ -61,45 +64,27 @@ export function GastoRapido() {
         }}
         className="w-full max-w-lg rounded-t-3xl bg-card p-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))] shadow-2xl ring-1 ring-[var(--border-ring)] sm:rounded-3xl sm:pb-5"
       >
-        <p className="text-lg leading-relaxed">
+        {/* leading-[3rem] da aire vertical para que los slots de 44px no se apiñen al envolver */}
+        <p className="text-lg leading-[3rem]">
           Hoy gasté{" "}
-          <span className="inline-flex items-baseline rounded-xl bg-page px-2 py-1 ring-1 ring-[var(--border-ring)] focus-within:ring-2 focus-within:ring-accent">
-            <span className="text-ink-3">S/</span>
+          <span className={`${SLOT} px-3`}>
+            <span className="text-base text-ink-3">S/</span>
             <input
               autoFocus
               inputMode="decimal"
               value={monto}
               onChange={(e) => setMonto(e.target.value.replace(",", "."))}
               placeholder="0.00"
-              size={5}
-              className="w-20 bg-transparent px-1 text-lg font-semibold text-ink outline-none placeholder:text-ink-3"
+              className="w-[4.5rem] bg-transparent pl-1.5 text-lg font-semibold text-ink outline-none placeholder:font-normal placeholder:text-ink-3"
             />
           </span>{" "}
-          en{" "}
-          <select
-            value={categoria}
-            onChange={(e) => setCategoria(e.target.value)}
-            className="touch-44 rounded-xl bg-page px-2 text-base text-ink ring-1 ring-[var(--border-ring)] outline-none focus:ring-2 focus:ring-accent"
-          >
-            {CATEGORIAS.map((c) => (
-              <option key={c} value={c}>
-                {c}
-              </option>
-            ))}
-          </select>{" "}
+          en <Selector valor={categoria} onChange={setCategoria} opciones={CATEGORIAS} />{" "}
           pagando con{" "}
-          <select
-            value={cuentaId ?? ""}
-            onChange={(e) => setCuentaId(Number(e.target.value))}
-            className="touch-44 rounded-xl bg-page px-2 text-base text-ink ring-1 ring-[var(--border-ring)] outline-none focus:ring-2 focus:ring-accent"
-          >
-            {(cuentas ?? []).map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.nombre}
-              </option>
-            ))}
-          </select>
-          .
+          <Selector
+            valor={String(cuentaId ?? "")}
+            onChange={(v) => setCuentaId(Number(v))}
+            opciones={(cuentas ?? []).map((c) => ({ valor: String(c.id), etiqueta: c.nombre }))}
+          />
         </p>
 
         <input
@@ -107,7 +92,7 @@ export function GastoRapido() {
           onChange={(e) => setNota(e.target.value)}
           placeholder="Nota (opcional)"
           maxLength={300}
-          className="mt-4 w-full touch-44 rounded-xl bg-page px-3 text-sm text-ink ring-1 ring-[var(--border-ring)] outline-none focus:ring-2 focus:ring-accent"
+          className="mt-4 h-11 w-full rounded-xl bg-page px-3 text-sm text-ink ring-1 ring-[var(--border-ring)] outline-none focus:ring-2 focus:ring-accent"
         />
 
         {crear.isError && (
@@ -116,7 +101,7 @@ export function GastoRapido() {
           </p>
         )}
 
-        <div className="mt-5 flex gap-2">
+        <div className="mt-5 flex gap-3">
           <Boton
             type="button"
             variante="secundario"
@@ -131,5 +116,42 @@ export function GastoRapido() {
         </div>
       </form>
     </div>
+  );
+}
+
+type Opcion = { valor: string; etiqueta: string };
+
+/** Select nativo (mejor UX táctil) envuelto para controlar altura y flecha. */
+function Selector({
+  valor,
+  onChange,
+  opciones,
+}: {
+  valor: string;
+  onChange: (v: string) => void;
+  opciones: readonly string[] | Opcion[];
+}) {
+  const items: Opcion[] = opciones.map((o) =>
+    typeof o === "string" ? { valor: o, etiqueta: o } : o,
+  );
+  return (
+    <span className={`${SLOT} relative pl-3 pr-8`}>
+      <select
+        value={valor}
+        onChange={(e) => onChange(e.target.value)}
+        className="appearance-none bg-transparent text-base text-ink outline-none"
+      >
+        {items.map((o) => (
+          <option key={o.valor} value={o.valor}>
+            {o.etiqueta}
+          </option>
+        ))}
+      </select>
+      <ChevronDown
+        size={16}
+        aria-hidden
+        className="pointer-events-none absolute right-2.5 text-ink-3"
+      />
+    </span>
   );
 }

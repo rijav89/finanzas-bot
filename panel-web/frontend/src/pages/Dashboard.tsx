@@ -35,11 +35,7 @@ export default function Dashboard() {
       <BentoGrid ids={visibles}>
         {visibles.map((id) => {
           const { Componente, span } = REGISTRO[id];
-          return (
-            <div key={id} className={span}>
-              <Componente datos={data} variante={variante} />
-            </div>
-          );
+          return <Componente key={id} datos={data} variante={variante} className={span} />;
         })}
       </BentoGrid>
       {variante === "compact" && (

@@ -30,6 +30,8 @@ export function BentoCard({
   });
 
   return (
+    // Este <section> ES la celda del grid (className trae el col-span): dnd-kit
+    // debe medir y transformar el mismo elemento que la grilla posiciona.
     <section
       ref={setNodeRef}
       style={{ transform: CSS.Translate.toString(transform), transition }}
