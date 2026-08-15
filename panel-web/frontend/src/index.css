@@ -104,3 +104,24 @@ body {
   min-width: 44px;
   min-height: 44px;
 }
+
+/* Slot rellenable del Mad Libs: se lee como palabra subrayada dentro de la frase,
+   no como caja de formulario. Mantiene 44px de área táctil sin peso visual. */
+.slot {
+  display: inline-flex;
+  align-items: center;
+  min-height: 2.75rem;
+  padding-inline: 0.625rem;
+  border-radius: 0.5rem 0.5rem 0 0;
+  background: color-mix(in oklab, var(--ink-primary) 5%, transparent);
+  border-bottom: 2px solid color-mix(in oklab, var(--accent) 45%, transparent);
+  vertical-align: middle;
+  transition: background 0.15s, border-color 0.15s;
+}
+.slot:hover {
+  background: color-mix(in oklab, var(--ink-primary) 9%, transparent);
+}
+.slot:focus-within {
+  border-bottom-color: var(--accent);
+  background: color-mix(in oklab, var(--accent) 10%, transparent);
+}

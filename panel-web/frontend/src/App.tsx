@@ -4,7 +4,7 @@ import { BrowserRouter, Route, Routes } from "react-router-dom";
 
 import { useMe } from "@/api/queries";
 import { CommandPalette } from "@/components/command/CommandPalette";
-import { GastoRapido } from "@/components/forms/GastoRapido";
+import { CapturaRapida } from "@/components/forms/CapturaRapida";
 import { AppShell } from "@/components/layout/AppShell";
 
 const Dashboard = lazy(() => import("@/pages/Dashboard"));
@@ -57,7 +57,7 @@ function Ruteador() {
         </Routes>
       </Suspense>
       <CommandPalette />
-      <GastoRapido />
+      <CapturaRapida />
     </AppShell>
   );
 }

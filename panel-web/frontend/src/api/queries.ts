@@ -40,16 +40,21 @@ export function useMovimientos(filtros: { q?: string; tipo?: string } = {}) {
   });
 }
 
-export function useCrearGasto() {
+export interface MovimientoNuevo {
+  monto: string;
+  categoria: string;
+  cuenta_id: number;
+  descripcion?: string;
+  /** YYYY-MM-DD; el backend usa hoy si se omite. */
+  fecha?: string;
+}
+
+/** Crea gasto o ingreso según `tipo`; ambos invalidan dashboard + historial. */
+export function useCrearMovimiento() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (body: {
-      monto: string;
-      categoria: string;
-      cuenta_id: number;
-      descripcion?: string;
-      medio?: string;
-    }) => api("/gastos", { method: "POST", body }),
+    mutationFn: ({ tipo, ...body }: MovimientoNuevo & { tipo: "gasto" | "ingreso" }) =>
+      api(tipo === "gasto" ? "/gastos" : "/ingresos", { method: "POST", body }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["dashboard"] });
       qc.invalidateQueries({ queryKey: ["movimientos"] });

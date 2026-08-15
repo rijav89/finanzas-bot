@@ -57,8 +57,14 @@ export interface MovimientosPage {
   offset: number;
 }
 
+/** Las 14 del bot (bot/categorias.py) — mismo orden y grafía (sin tildes). */
 export const CATEGORIAS = [
   "Comida", "Supermercado", "Transporte", "Servicios", "Salud",
   "Educacion", "Ropa", "Entretenimiento", "Tecnologia", "Finanzas",
   "Mascotas", "Belleza", "Hogar", "Otros",
+] as const;
+
+/** Origen del dinero que entra. 'Ingreso' es el default histórico del bot. */
+export const CATEGORIAS_INGRESO = [
+  "Sueldo", "Freelance", "Venta", "Regalo", "Reembolso", "Ingreso",
 ] as const;

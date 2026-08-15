@@ -1,5 +1,5 @@
 import { Command } from "cmdk";
-import { LayoutDashboard, ListOrdered, Plus, Wallet } from "lucide-react";
+import { LayoutDashboard, ListOrdered, Minus, Plus, Wallet } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
@@ -10,7 +10,7 @@ import { useUiStore } from "@/stores/uiStore";
 export function CommandPalette() {
   const abierta = useUiStore((s) => s.paletaAbierta);
   const setAbierta = useUiStore((s) => s.setPaletaAbierta);
-  const setGastoRapido = useUiStore((s) => s.setGastoRapidoAbierto);
+  const abrirCaptura = useUiStore((s) => s.abrirCaptura);
   const [busqueda, setBusqueda] = useState("");
   const navigate = useNavigate();
 
@@ -88,12 +88,21 @@ export function CommandPalette() {
             className="[&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:py-1.5 [&_[cmdk-group-heading]]:text-xs [&_[cmdk-group-heading]]:text-ink-3"
           >
             <Accion
-              icono={Plus}
+              icono={Minus}
               etiqueta="Registrar gasto"
               onSelect={() => {
                 setAbierta(false);
                 setBusqueda("");
-                setGastoRapido(true);
+                abrirCaptura("gasto");
+              }}
+            />
+            <Accion
+              icono={Plus}
+              etiqueta="Registrar ingreso"
+              onSelect={() => {
+                setAbierta(false);
+                setBusqueda("");
+                abrirCaptura("ingreso");
               }}
             />
             <Accion icono={LayoutDashboard} etiqueta="Ir al panel" onSelect={() => ir("/")} />
