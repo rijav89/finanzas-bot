@@ -1,0 +1,23 @@
+[Unit]
+Description=FinanzasBot Panel API (FastAPI)
+After=network.target
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/home/ubuntu/finanzas-bot/panel-web/backend
+ExecStart=/home/ubuntu/finanzas-bot/panel-web/backend/.venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8000
+# TEMPORAL para pruebas locales sin HTTPS — quitar en F6 (nginx + certbot)
+Environment=COOKIE_SECURE=false
+Restart=on-failure
+RestartSec=5
+MemoryMax=350M
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=read-only
+PrivateTmp=yes
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

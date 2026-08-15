@@ -4,7 +4,7 @@ Responder siempre en idioma español
 
 Bot de Telegram para finanzas personales, mercado peruano (Yape/Plin).
 Repo: rijav89/finanzas-bot (privado). Versión activa: v3.1.
-Última actualización de este contexto: 2026-08-02.
+Última actualización de este contexto: 2026-08-14.
 
 ## Infraestructura
 
@@ -15,11 +15,12 @@ Repo: rijav89/finanzas-bot (privado). Versión activa: v3.1.
 - Directorio: `/home/ubuntu/finanzas-bot`, venv en `/home/ubuntu/finanzas-bot/venv`
 - Backups de versiones anteriores en `/home/ubuntu/finanzas-bot/Backup/`
 
-**Servidor backend/panel** (150.136.170.92) — nuevo, recién instalado
+**Servidor backend/panel** (150.136.170.92)
 - Usuario: ubuntu · OS: Ubuntu 24.04 · Shape: VM.Standard.E2.1.Micro (Oracle Cloud Always Free)
 - Key SSH: `E:\Proyectos\Finanzas Bot\Keys\ssh-key-2026-08-02-backend.key`
-- Estado: nginx + python3 + certbot instalados; pendiente configurar el panel web
-- Nota: en Ubuntu 24.04 usar `python3 -m pip` o `pip install --break-system-packages`
+- Estado (2026-08-15): backend FastAPI desplegado en `/home/ubuntu/finanzas-bot/panel-web/backend` (snapshot vía `git archive` + scp, aún sin git clone), venv propio, `.env` con permisos 600
+- Servicio systemd: `panel-api` (uvicorn 127.0.0.1:8000, MemoryMax=350M, hardening). ⚠️ Tiene `Environment=COOKIE_SECURE=false` TEMPORAL para pruebas locales sin HTTPS — quitar en F6 al configurar nginx+certbot
+- Pendiente F6: nginx server block, certbot/SSL, rate limits, migración 004 (RLS), rotación password BD
 
 **Base de datos**: Supabase (plan gratuito)
 - Host: `aws-1-sa-east-1.pooler.supabase.com` · Puerto 5432 · DB `postgres`
@@ -33,8 +34,8 @@ Repo: rijav89/finanzas-bot (privado). Versión activa: v3.1.
 - python-dotenv, matplotlib, pillow, openpyxl, APScheduler
 
 ## IA — Qwen (Alibaba Cloud Model Studio, región Singapore)
-- Endpoint: `https://dashscope-intl.aliyuncs.com/compatible-mode/v1`
-  (endpoint dedicado del workspace: `https://ws-bcynyj2i14cccmz6.ap-southeast-1.maas.aliyuncs.com/compatible-mode/v1`)
+- Endpoint activo (default en `config.py`, vía `QWEN_BASE_URL`): `https://dashscope-intl.aliyuncs.com/compatible-mode/v1`
+- Endpoint alternativo del workspace (no confirmado si está en uso activo — verificar antes de asumir): `https://ws-bcynyj2i14cccmz6.ap-southeast-1.maas.aliyuncs.com/compatible-mode/v1`
 - Texto/NLP: `qwen-plus` · OCR/Visión: `qwen-vl-plus`
 - Free quota: 1,000,000 tokens por modelo, vence 2026-10-30. Stop-on-Exhaust activado.
 - Variable env: `DASHSCOPE_API_KEY`
@@ -57,6 +58,7 @@ Repo: rijav89/finanzas-bot (privado). Versión activa: v3.1.
 - OCR de comprobantes Yape/Plin (foto → datos extraídos)
 - Categorización automática (14 categorías)
 - Sistema de cuentas nombradas con aliases semánticos
+- Cuenta "Principal" auto-creada en `/start` con `is_default=true`
 - Transferencias entre cuentas
 - Reportes y resúmenes, exportación a Excel
 
@@ -65,7 +67,6 @@ Menú principal (Reply Keyboard 3x2): Gasto / Ingreso, Cuentas / Resumen, Compro
 ## Modelo de datos
 - `ACCOUNTS`: id, user_id, name, type, balance, is_default, aliases[], created_at
 - `TRANSACTIONS`: id, account_id, type, amount, category, note, transaction_date, created_at
-- Cuenta "Principal" se crea automáticamente en `/start` con `is_default=true`.
 
 ## Account resolver (3 capas)
 1. Match exacto por nombre/alias → registra directo
@@ -83,32 +84,53 @@ REGISTRAR_GASTOS, INICIAR_REGISTRO, REGISTRAR_INGRESO, TRANSFERIR, VER_RESUMEN, 
 - MarkdownV2 en todos los mensajes del bot
 - Reply Keyboard persistente (`resize_keyboard=True`)
 
-## Sistema de cuentas — diseño (pendiente de implementar completo)
-1. Cuenta Principal auto-creada en `/start` (crítico)
-2. Transferencias atómicas entre cuentas (crítico)
-3. Saldo inicial al crear cuenta
-4. Cache de aliases en memoria, Qwen como fallback
-5. Aprendizaje automático de aliases por confirmación
-6. Resumen desglosado por cuenta en `/resumen`
-7. Alerta proactiva de saldo bajo configurable
-8. Detección de pagos recurrentes (Fase 2)
+## Sistema de cuentas — mejoras pendientes (bot ya tiene la base funcionando)
+1. Transferencias atómicas entre cuentas (crítico — verificar atomicidad real en `db.py`)
+2. Saldo inicial al crear cuenta
+3. Cache de aliases en memoria, Qwen como fallback
+4. Resumen desglosado por cuenta en `/resumen`
+5. Alerta proactiva de saldo bajo configurable
+6. Detección de pagos recurrentes (Fase 2)
 
-## Panel web — próximo paso
-Stack decidido: FastAPI (reutiliza `db.py`/`config.py` del bot) + HTML/Alpine.js (sin Node, sin build step) + Nginx + Let's Encrypt (certbot) + auth por token simple.
+## Panel web — estado de implementación
 
-Funcionalidades planeadas: dashboard de resumen mensual, gestión de cuentas, historial de transacciones con filtros, configuración de alertas de saldo bajo, exportar a Excel.
+- **F1 completa (2026-08-14)**: BD migrada con Alembic (baseline 001 + checks 002 + módulos nuevos 003). 10 tablas nuevas (categorias con seed de 15, vinculos_auth, codigos_vinculacion, deudas, cuotas_deuda, presupuestos, perfiles_financieros, metas, metas_ahorro, insights_ia), columnas aditivas en cuentas (tipo) y pagos_fijos (frecuencia/fecha_fin/auto_registrar/ultimo_registro). Las migraciones se corren desde el servidor del bot: `panel-web/backend/deploy/alembic_desde_bot_env.py` (lee DB_CONFIG del .env del bot, secretos nunca salen del servidor).
+- **F2 completa y verificada E2E (2026-08-15)**: API core en `panel-web/backend/` — auth proxy GoTrue con cookies HttpOnly SameSite=Strict, validación JWT HS256+JWKS (el proyecto Supabase firma ES256), vinculación por código de un solo uso (sha256, TTL 10min), CRUD cuentas/gastos/ingresos, transferencias atómicas, dashboard con saldo histórico, guard CSRF (X-Requested-With), envelope {data,error}, 22 tests pytest (anti-IDOR incluidos). Usuario de prueba: test-panel@finanzasbot.dev vinculado al usuario ficticio telegram_id 999999 (usuario_id 28) — útil para probar F3.
+- Supabase Auth: proyecto `kzgrexncynqxhlpeypuv`, publishable key en el .env del servidor del panel. Confirmación de email ACTIVADA (los usuarios se crean desde el dashboard, auto-confirmados). Usuario real: ricardo1332@hotmail.com (aún sin vincular a su telegram_id).
+- Siguientes fases: F3 frontend (Vite SPA), F4 módulos nuevos + /vincular en bot, F5 insights IA, F6 deploy nginx/SSL/RLS.
 
-Estado servidor backend: nginx + python3-venv + certbot instalados; pendiente crear venv, instalar FastAPI, configurar Nginx y SSL.
+## Panel web — arquitectura decidida (2026-08-14)
+
+**Stack definitivo:**
+- Backend: FastAPI (Python 3.12+), reutiliza modelos vía SQLAlchemy 2.0 (asyncpg) + Alembic para migraciones. Estrategia híbrida: ORM para CRUD, Raw SQL para queries analíticas.
+- Frontend: Vite SPA (React) + TailwindCSS — **no** Next.js/SSR, por el límite de 1GB RAM del servidor del panel (un proceso Node persistente en modo SSR compite por memoria con FastAPI en la misma máquina). Librerías: `cmdk` (paleta de comandos), Nivo o Recharts (diagramas Sankey).
+- Auth: Supabase Auth (reemplaza el plan anterior de "token simple"). JWT en HttpOnly cookies, SameSite=Strict — objetivo OWASP ASVS L2/L3.
+- Infraestructura: Nginx + Let's Encrypt (certbot), ya instalados en el servidor backend.
+
+**Decisión clave de coexistencia bot/web:** el bot sigue escribiendo directo con `telegram_id` vía service role key (bypasea RLS). La web usa Supabase Auth (`auth.uid`). Pendiente de diseñar: vínculo seguro `telegram_id` ↔ `auth.uid` cuando un usuario de Telegram se registra en la web, y Row Level Security en las tablas de Supabase que respete ambos caminos de escritura.
+
+**Alcance:** uso personal por ahora, pero la arquitectura de Auth/RLS debe quedar preparada para multi-usuario a futuro sin rediseño mayor.
+
+**Mobile-first:** la web debe funcionar al mismo nivel de prioridad en móvil que en desktop, pero con densidad de información distinta por diseño (no simplificación técnica):
+- Desktop: dashboard panorámico con Bento Grid completo, Sankey y métricas simultáneas.
+- Móvil: dashboard prioriza solo lo más crítico (balance, alertas, 1-2 métricas destacadas); el resto de la analítica detallada vive en Reportes, no en el dashboard.
+- Paleta de comandos en móvil usa disparador táctil visible (no depende de Ctrl+K).
+- Breakpoints: móvil < 640px, tablet 640-1024px, desktop > 1024px.
+
+**Funcionalidades planeadas:** dashboard de resumen mensual (Bento Grid + Sankey), gestión de cuentas, historial de transacciones con filtros, formularios "Mad Libs" para captura manual, configuración de alertas de saldo bajo, exportar a Excel/PDF, módulos nuevos de Deudas/Préstamos, Ahorro, Pagos Recurrentes y Presupuestos, insights de IA vía cron semanal (Qwen).
+
+**Nota:** el cron de insights debe usar timezone explícita `America/Lima`, no UTC implícito — ya hubo un bug de este tipo en el job de recordatorios del bot (disparaba a las 4am en vez de las 9am hora Perú).
 
 ## Notas importantes
 - Oracle Ampere A1 no disponible por capacity en la región (intentar de madrugada)
 - Backup de archivos originales en `/home/ubuntu/finanzas-bot/Backup/`
 - ⚠️ El repo tiene commiteada una service account key de Google Cloud (`sacred-footing-489922-n6-b393bec9efea.json`, proyecto legacy de Gemini) — no está en `.gitignore`. Pendiente decidir si rotarla/revocarla.
+- Gestión de secretos: variables de entorno únicamente, nunca en el repo — no negociable, dado el historial de exposición (service account key + PAT de GitHub, ver más abajo).
 
 ## Estructura local del proyecto (este equipo)
-`E:\Proyectos\Finanzas Bot\dev\` es ahora la raíz del repo `rijav89/finanzas-bot` (monorepo, reorganizado 2026-08-02):
+`E:\Proyectos\Finanzas Bot\dev\` es la raíz del repo `rijav89/finanzas-bot` (monorepo, reorganizado 2026-08-02):
 - `bot/` — código del bot de Telegram (antes era la raíz del repo)
-- `panel-web/` — código del panel web (FastAPI + Alpine.js), aún por construir
+- `panel-web/` — código del panel web (FastAPI + Vite/React), aún por construir
 - `claude.md` — este archivo
 
 Git: usa el Git embebido de GitHub Desktop (`%LOCALAPPDATA%\GitHubDesktop\app-*\resources\app\git\cmd\git.exe`), no hay Git instalado por separado en el PATH del sistema. Las credenciales de GitHub para `rijav89` ya están en el Credential Manager de Windows (`wincred`).
@@ -123,6 +145,5 @@ Ajustado 2026-08-03 para el monorepo:
 - Backup pre-migración en `/home/ubuntu/finanzas-bot-backup-20260803.tar.gz`
 - Flujo de deploy futuro: `cd /home/ubuntu/finanzas-bot && git pull && sudo systemctl restart finanzasbot`
 
-⚠️ **Pendiente**: el `git remote` del servidor tenía un Personal Access Token de GitHub embebido en texto plano en la URL (`origin`). Recomendado rotarlo en GitHub → Settings → Developer settings → Personal access tokens, y reconfigurar el remote sin el token embebido.
 
 ⚠️ **Nota**: se encontraron y rescataron cambios de producción nunca commiteados (la migración completa a Qwen en `categorias.py`, `config.py`, `gastos_manual.py`, `ocr.py`) — ya están en GitHub. Quedaron además unos archivos `.save` sueltos en el servidor (`.env.save`, `gastos_manual.py.save`) de ediciones manuales anteriores, sin revisar.
