@@ -1,21 +1,43 @@
-import { LayoutDashboard, ListOrdered, LogOut, Plus, Search, Wallet } from "lucide-react";
-import type { ReactNode } from "react";
+import {
+  CalendarClock,
+  Landmark,
+  LayoutDashboard,
+  ListOrdered,
+  LogOut,
+  MoreHorizontal,
+  PiggyBank,
+  Plus,
+  Search,
+  Wallet,
+  X,
+} from "lucide-react";
+import { useState, type ReactNode } from "react";
 import { NavLink } from "react-router-dom";
 
 import { useLogout } from "@/api/queries";
 import { cn } from "@/lib/cn";
 import { useUiStore } from "@/stores/uiStore";
 
+/** Navegación completa. `enTabBar` marca lo que va en la barra inferior del móvil;
+ *  el resto vive detrás de «Más» para no apretar los toques. */
 const NAV = [
-  { to: "/", icono: LayoutDashboard, etiqueta: "Panel" },
-  { to: "/movimientos", icono: ListOrdered, etiqueta: "Movimientos" },
-  { to: "/cuentas", icono: Wallet, etiqueta: "Cuentas" },
+  { to: "/", icono: LayoutDashboard, etiqueta: "Panel", enTabBar: true },
+  { to: "/movimientos", icono: ListOrdered, etiqueta: "Movimientos", enTabBar: true },
+  { to: "/cuentas", icono: Wallet, etiqueta: "Cuentas", enTabBar: true },
+  { to: "/presupuestos", icono: LayoutDashboard, etiqueta: "Presupuestos", enTabBar: false },
+  { to: "/deudas", icono: Landmark, etiqueta: "Deudas", enTabBar: false },
+  { to: "/ahorros", icono: PiggyBank, etiqueta: "Ahorros", enTabBar: false },
+  { to: "/recurrentes", icono: CalendarClock, etiqueta: "Recurrentes", enTabBar: false },
 ];
 
 export function AppShell({ children }: { children: ReactNode }) {
   const setPaleta = useUiStore((s) => s.setPaletaAbierta);
   const abrirCaptura = useUiStore((s) => s.abrirCaptura);
+  const [masAbierto, setMasAbierto] = useState(false);
   const logout = useLogout();
+
+  const enTabBar = NAV.filter((n) => n.enTabBar);
+  const enMas = NAV.filter((n) => !n.enTabBar);
 
   return (
     <div className="min-h-dvh lg:flex">
@@ -77,9 +99,9 @@ export function AppShell({ children }: { children: ReactNode }) {
         <main className="px-4 lg:p-8">{children}</main>
       </div>
 
-      {/* Tab bar + FAB — solo móvil */}
+      {/* Tab bar — solo móvil */}
       <nav className="fixed inset-x-0 bottom-0 z-20 flex items-center justify-around border-t border-hairline bg-card pb-[env(safe-area-inset-bottom)] lg:hidden">
-        {NAV.map(({ to, icono: Icono, etiqueta }) => (
+        {enTabBar.map(({ to, icono: Icono, etiqueta }) => (
           <NavLink
             key={to}
             to={to}
@@ -95,7 +117,65 @@ export function AppShell({ children }: { children: ReactNode }) {
             {etiqueta}
           </NavLink>
         ))}
+        <button
+          onClick={() => setMasAbierto(true)}
+          className="flex touch-44 flex-1 flex-col items-center justify-center gap-0.5 py-2 text-[11px] text-ink-3"
+        >
+          <MoreHorizontal size={20} />
+          Más
+        </button>
       </nav>
+
+      {/* Hoja «Más» — el resto de secciones en móvil */}
+      {masAbierto && (
+        <div
+          className="fixed inset-0 z-50 flex items-end bg-black/50 lg:hidden"
+          onClick={() => setMasAbierto(false)}
+        >
+          <div
+            role="dialog"
+            aria-label="Más secciones"
+            onClick={(e) => e.stopPropagation()}
+            className="w-full rounded-t-2xl bg-card p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] shadow-2xl"
+          >
+            <div className="flex items-center">
+              <h2 className="font-semibold">Más</h2>
+              <button
+                onClick={() => setMasAbierto(false)}
+                aria-label="Cerrar"
+                className="ml-auto flex size-9 items-center justify-center rounded-lg text-ink-3"
+              >
+                <X size={18} />
+              </button>
+            </div>
+            <nav className="mt-2 space-y-1">
+              {enMas.map(({ to, icono: Icono, etiqueta }) => (
+                <NavLink
+                  key={to}
+                  to={to}
+                  onClick={() => setMasAbierto(false)}
+                  className={({ isActive }) =>
+                    cn(
+                      "flex items-center gap-3 rounded-xl px-3 py-3 text-sm",
+                      isActive ? "bg-page text-ink" : "text-ink-2",
+                    )
+                  }
+                >
+                  <Icono size={18} />
+                  {etiqueta}
+                </NavLink>
+              ))}
+              <button
+                onClick={() => logout.mutate()}
+                className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-sm text-ink-2"
+              >
+                <LogOut size={18} />
+                Salir
+              </button>
+            </nav>
+          </div>
+        </div>
+      )}
 
       {/* Un solo disparador: el tipo (gasto/ingreso) se elige dentro del modal */}
       <button

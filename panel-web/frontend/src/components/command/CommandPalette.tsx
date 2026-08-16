@@ -1,5 +1,14 @@
 import { Command } from "cmdk";
-import { LayoutDashboard, ListOrdered, Minus, Plus, Wallet } from "lucide-react";
+import {
+  CalendarClock,
+  Landmark,
+  LayoutDashboard,
+  ListOrdered,
+  Minus,
+  PiggyBank,
+  Plus,
+  Wallet,
+} from "lucide-react";
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
@@ -112,6 +121,18 @@ export function CommandPalette() {
               onSelect={() => ir("/movimientos")}
             />
             <Accion icono={Wallet} etiqueta="Ver cuentas" onSelect={() => ir("/cuentas")} />
+            <Accion
+              icono={LayoutDashboard}
+              etiqueta="Ver presupuestos"
+              onSelect={() => ir("/presupuestos")}
+            />
+            <Accion icono={Landmark} etiqueta="Ver deudas" onSelect={() => ir("/deudas")} />
+            <Accion icono={PiggyBank} etiqueta="Ver ahorros" onSelect={() => ir("/ahorros")} />
+            <Accion
+              icono={CalendarClock}
+              etiqueta="Ver pagos recurrentes"
+              onSelect={() => ir("/recurrentes")}
+            />
           </Command.Group>
         </Command.List>
       </Command>

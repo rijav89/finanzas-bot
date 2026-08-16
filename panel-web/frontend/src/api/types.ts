@@ -68,3 +68,100 @@ export const CATEGORIAS = [
 export const CATEGORIAS_INGRESO = [
   "Sueldo", "Freelance", "Venta", "Regalo", "Reembolso", "Ingreso",
 ] as const;
+
+// ── Módulos F4 ───────────────────────────────────────────────────────────────
+
+export type Semaforo = "bien" | "atencion" | "critico" | "info";
+
+export interface Categoria {
+  id: number;
+  nombre: string;
+  icono: string | null;
+  color: string | null;
+  es_sistema: boolean;
+  activa: boolean;
+}
+
+export interface PresupuestoItem {
+  id: number;
+  categoria: string;
+  monto_limite: number;
+  gastado: number;
+  disponible: number;
+  porcentaje: number;
+  semaforo: Semaforo;
+}
+
+export interface PresupuestosResp {
+  periodo: { anio: number; mes: number };
+  items: PresupuestoItem[];
+  total_limite: number;
+  total_gastado: number;
+  sin_presupuesto: { categoria: string; gastado: number }[];
+}
+
+export type TipoDeuda = "prestamo_recibido" | "prestamo_otorgado" | "tarjeta";
+
+export interface Deuda {
+  id: number;
+  tipo: TipoDeuda;
+  acreedor: string;
+  monto_total: number;
+  tasa_interes: number | null;
+  num_cuotas: number | null;
+  fecha_inicio: string;
+  estado: "activa" | "pagada" | "cancelada";
+  cuenta_id: number | null;
+  pagado: number;
+  saldo_pendiente: number;
+  porcentaje_pagado: number;
+  cuotas_pendientes: number;
+  proxima_cuota: { numero: number; monto: number; vence_en: string } | null;
+}
+
+export interface Cuota {
+  numero: number;
+  monto: number;
+  vence_en: string;
+  pagada: boolean;
+  transaccion_id: number | null;
+}
+
+export interface DeudasResp {
+  items: Deuda[];
+  total_pendiente: number;
+  debo: number;
+  me_deben: number;
+}
+
+export interface Ahorro {
+  cuenta_id: number;
+  nombre: string;
+  saldo: number;
+  meta: {
+    monto_objetivo: number;
+    fecha_objetivo: string | null;
+    porcentaje: number;
+    falta: number | null;
+    cumplida: boolean;
+  } | null;
+}
+
+export interface Recurrente {
+  id: number;
+  descripcion: string;
+  monto: number;
+  dia_mes: number;
+  categoria: string | null;
+  cuenta_id: number | null;
+  frecuencia: "mensual" | "semanal" | "anual";
+  fecha_fin: string | null;
+  activo: boolean;
+  proximo_vencimiento: string;
+}
+
+export const ETIQUETA_TIPO_DEUDA: Record<TipoDeuda, string> = {
+  prestamo_recibido: "Préstamo recibido",
+  prestamo_otorgado: "Préstamo otorgado",
+  tarjeta: "Tarjeta de crédito",
+};

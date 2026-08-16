@@ -97,7 +97,13 @@ REGISTRAR_GASTOS, INICIAR_REGISTRO, REGISTRAR_INGRESO, TRANSFERIR, VER_RESUMEN, 
 - **F1 completa (2026-08-14)**: BD migrada con Alembic (baseline 001 + checks 002 + módulos nuevos 003). 10 tablas nuevas (categorias con seed de 15, vinculos_auth, codigos_vinculacion, deudas, cuotas_deuda, presupuestos, perfiles_financieros, metas, metas_ahorro, insights_ia), columnas aditivas en cuentas (tipo) y pagos_fijos (frecuencia/fecha_fin/auto_registrar/ultimo_registro). Las migraciones se corren desde el servidor del bot: `panel-web/backend/deploy/alembic_desde_bot_env.py` (lee DB_CONFIG del .env del bot, secretos nunca salen del servidor).
 - **F2 completa y verificada E2E (2026-08-15)**: API core en `panel-web/backend/` — auth proxy GoTrue con cookies HttpOnly SameSite=Strict, validación JWT HS256+JWKS (el proyecto Supabase firma ES256), vinculación por código de un solo uso (sha256, TTL 10min), CRUD cuentas/gastos/ingresos, transferencias atómicas, dashboard con saldo histórico, guard CSRF (X-Requested-With), envelope {data,error}, 22 tests pytest (anti-IDOR incluidos). Usuario de prueba: test-panel@finanzasbot.dev vinculado al usuario ficticio telegram_id 999999 (usuario_id 28) — útil para probar F3.
 - Supabase Auth: proyecto `kzgrexncynqxhlpeypuv`, publishable key en el .env del servidor del panel. Confirmación de email ACTIVADA (los usuarios se crean desde el dashboard, auto-confirmados). Usuario real: ricardo1332@hotmail.com (aún sin vincular a su telegram_id).
-- Siguientes fases: F3 frontend (Vite SPA), F4 módulos nuevos + /vincular en bot, F5 insights IA, F6 deploy nginx/SSL/RLS.
+- **F3 completa (2026-08-15)**: SPA Vite+React+Tailwind desplegada (nginx sirve `dist/` en `/var/www/panel` + proxy `/api`). Bento Grid con dnd-kit, Sankey lazy (Nivo), paleta cmdk, captura Mad Libs (gasto/ingreso, fecha con atajos), mobile-first con bottom sheet que respeta el teclado virtual.
+- **F4 backend completo (2026-08-16)**: módulos de categorías, presupuestos (con semáforo), deudas con cronograma de cuotas y pago atómico, ahorros con metas, recurrentes y perfil/metas. 28 rutas, 38 tests. Comando `/vincular` en el bot.
+- Siguientes: F4 frontend (páginas de los módulos), F5 insights IA, F6 deploy nginx/SSL/RLS.
+
+**F6 — dominio**: el usuario usará un **subdominio de una web que ya posee** (no hace falta comprar dominio). Definir el subdominio y apuntar un A record a 150.136.170.92 antes de correr certbot.
+
+**Acceso temporal mientras no hay dominio**: túnel SSH `panel-web/abrir-panel.ps1` (con `-Lan` para entrar desde el celular). La IP LAN de la PC cambia por DHCP — verificar antes de usar.
 
 ## Panel web — arquitectura decidida (2026-08-14)
 

@@ -1,7 +1,19 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { api } from "./client";
-import type { Cuenta, DashboardResumen, Me, MovimientosPage } from "./types";
+import type {
+  Ahorro,
+  Categoria,
+  Cuenta,
+  Cuota,
+  DashboardResumen,
+  Deuda,
+  DeudasResp,
+  Me,
+  MovimientosPage,
+  PresupuestosResp,
+  Recurrente,
+} from "./types";
 
 export function useMe() {
   return useQuery({
@@ -59,6 +71,144 @@ export function useCrearMovimiento() {
       qc.invalidateQueries({ queryKey: ["dashboard"] });
       qc.invalidateQueries({ queryKey: ["movimientos"] });
     },
+  });
+}
+
+// ── Módulos F4 ───────────────────────────────────────────────────────────────
+
+/** Invalida todo lo que cambia cuando se toca dinero (dashboard, historial, módulos). */
+function useInvalidarFinanzas() {
+  const qc = useQueryClient();
+  return () => {
+    for (const k of ["dashboard", "movimientos", "deudas", "ahorros", "presupuestos"]) {
+      qc.invalidateQueries({ queryKey: [k] });
+    }
+  };
+}
+
+export function useCategorias() {
+  return useQuery({
+    queryKey: ["categorias"],
+    queryFn: () => api<Categoria[]>("/categorias"),
+    staleTime: 10 * 60_000,
+  });
+}
+
+export function usePresupuestos(anio?: number, mes?: number) {
+  const qs = anio && mes ? `?anio=${anio}&mes=${mes}` : "";
+  return useQuery({
+    queryKey: ["presupuestos", anio, mes],
+    queryFn: () => api<PresupuestosResp>(`/presupuestos${qs}`),
+    staleTime: 60_000,
+  });
+}
+
+export function useGuardarPresupuestos() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: {
+      anio: number;
+      mes: number;
+      items: { categoria: string; monto_limite: string }[];
+    }) => api("/presupuestos", { method: "PUT", body }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["presupuestos"] }),
+  });
+}
+
+export function useDeudas() {
+  return useQuery({
+    queryKey: ["deudas"],
+    queryFn: () => api<DeudasResp>("/deudas"),
+    staleTime: 60_000,
+  });
+}
+
+export function useDeuda(id: number | null) {
+  return useQuery({
+    queryKey: ["deudas", id],
+    queryFn: () => api<Deuda & { cuotas: Cuota[] }>(`/deudas/${id}`),
+    enabled: id !== null,
+  });
+}
+
+export function useCrearDeuda() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: Record<string, unknown>) =>
+      api("/deudas", { method: "POST", body }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["deudas"] }),
+  });
+}
+
+export function usePagarCuota() {
+  const invalidar = useInvalidarFinanzas();
+  return useMutation({
+    mutationFn: ({
+      deudaId,
+      numero,
+      cuenta_id,
+    }: {
+      deudaId: number;
+      numero: number;
+      cuenta_id?: number;
+    }) =>
+      api(`/deudas/${deudaId}/cuotas/${numero}/pagar`, {
+        method: "POST",
+        body: cuenta_id ? { cuenta_id } : {},
+      }),
+    onSuccess: invalidar,
+  });
+}
+
+export function useAhorros() {
+  return useQuery({
+    queryKey: ["ahorros"],
+    queryFn: () => api<{ items: Ahorro[]; total_ahorrado: number }>("/ahorros"),
+    staleTime: 60_000,
+  });
+}
+
+export function useDefinirMetaAhorro() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      cuentaId,
+      ...body
+    }: {
+      cuentaId: number;
+      monto_objetivo: string;
+      fecha_objetivo?: string | null;
+    }) => api(`/ahorros/${cuentaId}/meta`, { method: "PUT", body }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["ahorros"] });
+      qc.invalidateQueries({ queryKey: ["cuentas"] });
+    },
+  });
+}
+
+export function useRecurrentes() {
+  return useQuery({
+    queryKey: ["recurrentes"],
+    queryFn: () =>
+      api<{ items: Recurrente[]; total_mensual: number }>("/recurrentes"),
+    staleTime: 60_000,
+  });
+}
+
+export function useCrearRecurrente() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: Record<string, unknown>) =>
+      api("/recurrentes", { method: "POST", body }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["recurrentes"] }),
+  });
+}
+
+export function useEliminarRecurrente() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: number) => api(`/recurrentes/${id}`, { method: "DELETE" }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["recurrentes"] }),
   });
 }
 

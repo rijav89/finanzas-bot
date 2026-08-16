@@ -10,6 +10,10 @@ import { AppShell } from "@/components/layout/AppShell";
 const Dashboard = lazy(() => import("@/pages/Dashboard"));
 const Movimientos = lazy(() => import("@/pages/Movimientos"));
 const Cuentas = lazy(() => import("@/pages/Cuentas"));
+const Presupuestos = lazy(() => import("@/pages/Presupuestos"));
+const Deudas = lazy(() => import("@/pages/Deudas"));
+const Ahorros = lazy(() => import("@/pages/Ahorros"));
+const Recurrentes = lazy(() => import("@/pages/Recurrentes"));
 const Login = lazy(() => import("@/pages/Login"));
 const Vincular = lazy(() => import("@/pages/Vincular"));
 
@@ -53,6 +57,10 @@ function Ruteador() {
           <Route path="/" element={<Dashboard />} />
           <Route path="/movimientos" element={<Movimientos />} />
           <Route path="/cuentas" element={<Cuentas />} />
+          <Route path="/presupuestos" element={<Presupuestos />} />
+          <Route path="/deudas" element={<Deudas />} />
+          <Route path="/ahorros" element={<Ahorros />} />
+          <Route path="/recurrentes" element={<Recurrentes />} />
           <Route path="*" element={<Dashboard />} />
         </Routes>
       </Suspense>
