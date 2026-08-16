@@ -1,141 +1,127 @@
 @import "tailwindcss";
+@import "@fontsource-variable/inter";
 
-/* Tokens de diseño — paleta de referencia dataviz (light/dark seleccionados, no invertidos).
-   Los charts consumen roles (--series-*, --ink-*), nunca hex directos. */
+/* ── Tokens del diseño "Fondo" ──────────────────────────────────────────────
+   Tema claro por defecto; oscuro automático por prefers-color-scheme.
+   Ambos modos son diseños seleccionados (mockups 2026-08), no inversiones. */
 :root {
   color-scheme: light;
-  --surface-page: #f9f9f7;
-  --surface-card: #fcfcfb;
-  --ink-primary: #0b0b0b;
-  --ink-secondary: #52514e;
-  --ink-muted: #898781;
-  --hairline: #e1e0d9;
-  --border-ring: rgba(11, 11, 11, 0.1);
 
-  --series-1: #2a78d6;
-  --series-2: #eb6834;
-  --series-3: #1baf7a;
-  --seq-300: #6da7ec;
-  --seq-450: #2a78d6;
-  --seq-600: #184f95;
+  --page: #f6f7f9;
+  --card: #ffffff;
+  --card-soft: #f3f4f6; /* iconos, rieles, chips neutros */
+  --ink: #111827;
+  --ink-2: #6b7280;
+  --ink-3: #9ca3af;
+  --hairline: #e5e7eb;
+  --ring: rgba(17, 24, 39, 0.08);
 
-  --status-good: #0ca30c;
-  --status-good-text: #006300;
-  --status-warning: #fab219;
-  --status-serious: #ec835a;
-  --status-critical: #d03b3b;
+  --accent: #5b4fe8;
+  --accent-hover: #4f44d6;
+  --accent-soft: #eeedfc;
+  --accent-ink: #4338ca;
 
-  --accent: #2a78d6;
+  --good: #16a34a;
+  --good-soft: #e7f6ec;
+  --good-ink: #15803d;
+
+  --bad: #dc2626;
+  --bad-soft: #fdecec;
+  --bad-ink: #b91c1c;
+
+  --warn: #a16207; /* barra ámbar del mockup claro */
+  --warn-soft: #fbf3df;
+  --warn-ink: #92610a;
+
+  /* Series de datos (Sankey, por categoría, donuts) */
+  --s1: #5b4fe8; /* índigo */
+  --s2: #0d9488; /* teal */
+  --s3: #d97706; /* ámbar */
+  --s4: #e11d48; /* carmesí */
+  --s5: #0284c7; /* azul */
+  --s6: #8b5cf6; /* violeta */
+  --s7: #15803d; /* verde ahorro */
 }
 
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
     color-scheme: dark;
-    --surface-page: #0d0d0d;
-    --surface-card: #1a1a19;
-    --ink-primary: #ffffff;
-    --ink-secondary: #c3c2b7;
-    --ink-muted: #898781;
-    --hairline: #2c2c2a;
-    --border-ring: rgba(255, 255, 255, 0.1);
 
-    --series-1: #3987e5;
-    --series-2: #d95926;
-    --series-3: #199e70;
-    --seq-300: #5598e7;
-    --seq-450: #3987e5;
-    --seq-600: #184f95;
+    --page: #0b0c0f;
+    --card: #16171d;
+    --card-soft: #21232b;
+    --ink: #f4f5f7;
+    --ink-2: #a2a6b0;
+    --ink-3: #6f7480;
+    --hairline: #262830;
+    --ring: rgba(255, 255, 255, 0.07);
 
-    --status-good: #0ca30c;
-    --status-good-text: #0ca30c;
+    --accent: #7c74f1;
+    --accent-hover: #6d64ee;
+    --accent-soft: #26243f;
+    --accent-ink: #a5a0f6;
 
-    --accent: #3987e5;
+    --good: #34d399;
+    --good-soft: #12271d;
+    --good-ink: #4ade80;
+
+    --bad: #f87171;
+    --bad-soft: #2c1719;
+    --bad-ink: #fca5a5;
+
+    --warn: #facc15; /* barra amarilla del mockup oscuro */
+    --warn-soft: #2b2312;
+    --warn-ink: #fbbf24;
+
+    --s1: #7c74f1;
+    --s2: #2dd4bf;
+    --s3: #fbbf24;
+    --s4: #fb7185;
+    --s5: #38bdf8;
+    --s6: #a78bfa;
+    --s7: #34d399;
   }
 }
 
-:root[data-theme="dark"] {
-  color-scheme: dark;
-  --surface-page: #0d0d0d;
-  --surface-card: #1a1a19;
-  --ink-primary: #ffffff;
-  --ink-secondary: #c3c2b7;
-  --ink-muted: #898781;
-  --hairline: #2c2c2a;
-  --border-ring: rgba(255, 255, 255, 0.1);
-
-  --series-1: #3987e5;
-  --series-2: #d95926;
-  --series-3: #199e70;
-  --seq-300: #5598e7;
-  --seq-450: #3987e5;
-  --seq-600: #184f95;
-
-  --status-good: #0ca30c;
-  --status-good-text: #0ca30c;
-
-  --accent: #3987e5;
-}
-
 @theme inline {
-  --color-page: var(--surface-page);
-  --color-card: var(--surface-card);
-  --color-ink: var(--ink-primary);
-  --color-ink-2: var(--ink-secondary);
-  --color-ink-3: var(--ink-muted);
+  --color-page: var(--page);
+  --color-card: var(--card);
+  --color-card-soft: var(--card-soft);
+  --color-ink: var(--ink);
+  --color-ink-2: var(--ink-2);
+  --color-ink-3: var(--ink-3);
   --color-hairline: var(--hairline);
   --color-accent: var(--accent);
-  --color-good: var(--status-good);
-  --color-good-text: var(--status-good-text);
-  --color-warning: var(--status-warning);
-  --color-serious: var(--status-serious);
-  --color-critical: var(--status-critical);
-  --font-sans: system-ui, -apple-system, "Segoe UI", sans-serif;
+  --color-accent-hover: var(--accent-hover);
+  --color-accent-soft: var(--accent-soft);
+  --color-accent-ink: var(--accent-ink);
+  --color-good: var(--good);
+  --color-good-soft: var(--good-soft);
+  --color-good-ink: var(--good-ink);
+  --color-bad: var(--bad);
+  --color-bad-soft: var(--bad-soft);
+  --color-bad-ink: var(--bad-ink);
+  --color-warn: var(--warn);
+  --color-warn-soft: var(--warn-soft);
+  --color-warn-ink: var(--warn-ink);
+  --font-sans: "Inter Variable", system-ui, -apple-system, "Segoe UI", sans-serif;
 }
 
 body {
-  background: var(--surface-page);
-  color: var(--ink-primary);
+  background: var(--page);
+  color: var(--ink);
   font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
+  font-feature-settings: "cv11"; /* Inter: variante de 'a' como el mockup */
 }
 
-/* Área táctil mínima 44px en controles inline (Mad Libs, tabbar) */
+/* Área táctil mínima 44px en controles inline */
 .touch-44 {
   min-width: 44px;
   min-height: 44px;
 }
 
-/* Slot rellenable del Mad Libs: se lee como palabra subrayada dentro de la frase.
-   El área táctil son 44px (accesibilidad móvil) pero el fondo visible es más bajo
-   — se dibuja en ::before — para que no pese como caja de formulario. */
-.slot {
-  position: relative;
-  display: inline-flex;
-  align-items: center;
-  min-height: 2.75rem; /* área táctil */
-  padding-inline: 0.5rem;
-  vertical-align: middle;
-}
-.slot::before {
-  content: "";
-  position: absolute;
-  inset-inline: 0;
-  top: 50%;
-  height: 2rem; /* fondo visible */
-  transform: translateY(-50%);
-  border-radius: 0.375rem 0.375rem 0 0;
-  background: color-mix(in oklab, var(--ink-primary) 5%, transparent);
-  border-bottom: 2px solid color-mix(in oklab, var(--accent) 40%, transparent);
-  pointer-events: none;
-  transition: background 0.15s, border-color 0.15s;
-}
-.slot:hover::before {
-  background: color-mix(in oklab, var(--ink-primary) 9%, transparent);
-}
-.slot:focus-within::before {
-  border-bottom-color: var(--accent);
-  background: color-mix(in oklab, var(--accent) 10%, transparent);
-}
-.slot > * {
-  position: relative; /* por encima del fondo */
+/* Números tabulares en montos alineados */
+.tnum {
+  font-variant-numeric: tabular-nums;
 }

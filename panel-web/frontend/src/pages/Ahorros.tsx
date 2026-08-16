@@ -1,121 +1,154 @@
-import { PiggyBank, Target } from "lucide-react";
+import { Flag, MoreHorizontal, PiggyBank, Plus, Target } from "lucide-react";
 import { useState } from "react";
 
 import { useAhorros, useCuentas, useDefinirMetaAhorro } from "@/api/queries";
+import { HeaderMovil } from "@/components/layout/AppShell";
+import { Badge } from "@/components/ui/Badge";
 import { BarraProgreso } from "@/components/ui/BarraProgreso";
 import { Boton } from "@/components/ui/Boton";
-import { Semaforo } from "@/components/ui/Semaforo";
+import { Card, PageHeader } from "@/components/ui/Card";
+import { Donut } from "@/components/ui/Donut";
+import { Hoja } from "@/components/ui/Hoja";
 import { money } from "@/lib/money";
 
+const COLORES = ["var(--s1)", "var(--s2)", "var(--s3)", "var(--s6)", "var(--s5)"];
+
 export default function Ahorros() {
-  const { data, isLoading } = useAhorros();
+  const { data, isPending } = useAhorros();
   const { data: cuentas } = useCuentas();
   const [editando, setEditando] = useState<number | null>(null);
 
-  // Cuentas corrientes que aún no son de ahorro: candidatas a convertir
+  const conMeta = (data?.items ?? []).filter((a) => a.meta);
+  const totalMetas = conMeta.reduce((s, a) => s + (a.meta?.monto_objetivo ?? 0), 0);
+  const acumulado = data?.total_ahorrado ?? 0;
+  const pctGeneral = totalMetas > 0 ? (acumulado / totalMetas) * 100 : 0;
+
   const candidatas = (cuentas ?? []).filter(
     (c) => !(data?.items ?? []).some((a) => a.cuenta_id === c.id),
   );
 
   return (
-    <div className="mx-auto max-w-3xl pb-8">
-      <header className="flex items-center gap-3 py-4">
-        <h1 className="text-xl font-semibold">Ahorros</h1>
-      </header>
+    <>
+      <HeaderMovil titulo="Ahorros" subtitulo={`${conMeta.length} metas activas`} />
+      <div className="hidden lg:block">
+        <PageHeader
+          titulo="Ahorros"
+          subtitulo={`${conMeta.length} metas activas · ${money(acumulado)} acumulados`}
+          acciones={
+            <Boton onClick={() => setEditando(candidatas[0]?.id ?? null)}>
+              <Plus size={18} />
+              Nueva meta
+            </Boton>
+          }
+        />
+      </div>
 
-      {isLoading && <div className="h-32 animate-pulse rounded-2xl bg-card" />}
+      {isPending && <div className="h-32 animate-pulse rounded-2xl bg-card" />}
 
       {data && (
         <>
-          <section className="rounded-2xl bg-card p-4 ring-1 ring-[var(--border-ring)] sm:p-5">
-            <p className="text-sm text-ink-2">Total ahorrado</p>
-            <p className="mt-1 text-3xl font-semibold tabular-nums">
-              {money(data.total_ahorrado)}
-            </p>
-          </section>
-
-          {data.items.length === 0 ? (
-            <div className="mt-4 rounded-2xl bg-card p-6 text-center ring-1 ring-[var(--border-ring)]">
-              <PiggyBank size={28} className="mx-auto text-ink-3" />
-              <p className="mt-3 text-sm text-ink-2">Todavía no tenés cuentas de ahorro.</p>
-              <p className="mt-1 text-xs text-ink-3">
-                Convertí una cuenta existente asignándole una meta.
-              </p>
+          {/* Progreso general */}
+          <Card className="mb-4">
+            <h2 className="font-semibold text-ink-2">Progreso general</h2>
+            <div className="mt-3 flex flex-wrap items-end gap-x-10 gap-y-4">
+              <div>
+                <p className="text-sm text-ink-2">Acumulado</p>
+                <p className="mt-1 text-[1.75rem] font-bold leading-none text-good-ink tnum">
+                  {money(acumulado)}
+                </p>
+              </div>
+              <div>
+                <p className="text-sm text-ink-2">Suma de metas</p>
+                <p className="mt-1 text-[1.75rem] font-bold leading-none tnum">
+                  {money(totalMetas)}
+                </p>
+              </div>
+              <div>
+                <p className="text-sm text-ink-2">Te falta</p>
+                <p className="mt-1 text-[1.75rem] font-bold leading-none text-ink-3 tnum">
+                  {money(Math.max(totalMetas - acumulado, 0))}
+                </p>
+              </div>
+              <div className="min-w-[14rem] flex-1">
+                <div className="mb-2 flex items-center justify-end gap-2">
+                  <span className="text-sm text-ink-2 tnum">
+                    {Math.round(pctGeneral)}% del total de tus metas
+                  </span>
+                  <Badge tono={pctGeneral >= 100 ? "good" : "good"}>
+                    {pctGeneral >= 100 ? "Completado" : "En camino"}
+                  </Badge>
+                </div>
+                <BarraProgreso porcentaje={pctGeneral} tono="good" />
+              </div>
             </div>
-          ) : (
-            <section className="mt-4 space-y-2">
-              {data.items.map((a) => (
-                <article
-                  key={a.cuenta_id}
-                  className="rounded-xl bg-card p-4 ring-1 ring-[var(--border-ring)]"
-                >
-                  <div className="flex items-baseline justify-between gap-3">
-                    <span className="truncate font-medium">{a.nombre}</span>
-                    <span className="shrink-0 text-lg font-semibold tabular-nums">
-                      {money(a.saldo)}
-                    </span>
+          </Card>
+
+          {/* Metas */}
+          {conMeta.length > 0 && (
+            <div className="mb-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              {conMeta.map((a, i) => (
+                <Card key={a.cuenta_id}>
+                  <div className="flex items-start gap-2">
+                    <h3 className="min-w-0 flex-1 truncate font-semibold">{a.nombre}</h3>
+                    <button
+                      onClick={() => setEditando(a.cuenta_id)}
+                      aria-label={`Editar meta de ${a.nombre}`}
+                      className="-mr-1 -mt-1 flex size-8 items-center justify-center rounded-lg text-ink-3 hover:text-ink"
+                    >
+                      <MoreHorizontal size={18} />
+                    </button>
                   </div>
 
-                  {a.meta ? (
-                    <>
-                      <BarraProgreso
-                        className="mt-2.5"
-                        porcentaje={a.meta.porcentaje}
-                        estado={a.meta.cumplida ? "bien" : "info"}
+                  <div className="mt-3 flex items-center gap-4">
+                    <div className="relative shrink-0">
+                      <Donut
+                        porcentaje={a.meta!.porcentaje}
+                        color={COLORES[i % COLORES.length]}
                       />
-                      <div className="mt-1.5 flex items-center justify-between text-xs">
-                        <span className="text-ink-3">
-                          Meta {money(a.meta.monto_objetivo)}
-                          {a.meta.fecha_objetivo && ` · ${a.meta.fecha_objetivo}`}
-                        </span>
-                        <span className="tabular-nums text-ink-2">{a.meta.porcentaje}%</span>
-                      </div>
-                      {a.meta.cumplida ? (
-                        <div className="mt-2">
-                          <Semaforo estado="good" etiqueta="Meta alcanzada" />
-                        </div>
-                      ) : (
-                        <p className="mt-2 text-xs text-ink-3">
-                          Faltan {money(a.meta.falta ?? 0)}
-                        </p>
-                      )}
-                    </>
-                  ) : (
-                    <p className="mt-2 text-xs text-ink-3">Sin meta definida</p>
-                  )}
-
-                  <button
-                    onClick={() => setEditando(a.cuenta_id)}
-                    className="mt-3 text-xs font-medium text-accent"
-                  >
-                    {a.meta ? "Cambiar meta" : "Definir meta"}
-                  </button>
-                </article>
+                      <span className="absolute inset-0 flex items-center justify-center text-sm font-bold tnum">
+                        {Math.round(a.meta!.porcentaje)}%
+                      </span>
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm text-ink-2">Llevás</p>
+                      <p className="text-2xl font-bold leading-tight tnum">{money(a.saldo)}</p>
+                      <p className="mt-1 truncate text-sm text-ink-3 tnum">
+                        Meta {money(a.meta!.monto_objetivo)}
+                      </p>
+                      <p className="mt-1.5 inline-flex items-center gap-1.5 text-sm text-ink-2">
+                        <Flag size={14} className="shrink-0" />
+                        {a.meta!.cumplida
+                          ? "Meta alcanzada"
+                          : `Te falta ${money(a.meta!.falta ?? 0)}`}
+                      </p>
+                    </div>
+                  </div>
+                </Card>
               ))}
-            </section>
+            </div>
           )}
 
+          {conMeta.length === 0 && (
+            <Card className="mb-4 py-10 text-center">
+              <PiggyBank size={30} className="mx-auto text-ink-3" />
+              <p className="mt-3 font-semibold">Todavía no tenés metas de ahorro</p>
+              <p className="mt-1 text-sm text-ink-3">
+                Asigná una meta a cualquier cuenta para empezar a seguirla.
+              </p>
+            </Card>
+          )}
+
+          {/* Convertir cuenta */}
           {candidatas.length > 0 && (
-            <section className="mt-6">
-              <h2 className="text-sm font-medium text-ink-2">Convertir en cuenta de ahorro</h2>
-              <ul className="mt-2 space-y-1.5">
-                {candidatas.map((c) => (
-                  <li
-                    key={c.id}
-                    className="flex items-center gap-3 rounded-xl bg-card px-3.5 py-2.5 ring-1 ring-[var(--border-ring)]"
-                  >
-                    <Target size={16} className="shrink-0 text-ink-3" />
-                    <span className="truncate text-sm">{c.nombre}</span>
-                    <button
-                      onClick={() => setEditando(c.id)}
-                      className="ml-auto shrink-0 text-xs font-medium text-accent"
-                    >
-                      Asignar meta
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            </section>
+            <Card>
+              <div className="flex flex-wrap items-center gap-2">
+                <h2 className="font-semibold text-ink-2">Convertir una cuenta en ahorro</h2>
+                <p className="ml-auto text-sm text-ink-3">
+                  Cualquier cuenta existente puede tener una meta
+                </p>
+              </div>
+              <ConvertirCuenta cuentas={candidatas} />
+            </Card>
           )}
         </>
       )}
@@ -123,7 +156,61 @@ export default function Ahorros() {
       {editando !== null && (
         <FormMeta cuentaId={editando} onCerrar={() => setEditando(null)} />
       )}
-    </div>
+    </>
+  );
+}
+
+function ConvertirCuenta({ cuentas }: { cuentas: { id: number; nombre: string }[] }) {
+  const definir = useDefinirMetaAhorro();
+  const [cuentaId, setCuentaId] = useState(String(cuentas[0]?.id ?? ""));
+  const [monto, setMonto] = useState("");
+
+  return (
+    <form
+      onSubmit={(e) => {
+        e.preventDefault();
+        if (!(Number(monto) > 0) || !cuentaId) return;
+        definir.mutate(
+          { cuentaId: Number(cuentaId), monto_objetivo: monto },
+          { onSuccess: () => setMonto("") },
+        );
+      }}
+      className="mt-4 flex flex-wrap items-end gap-3"
+    >
+      <label className="min-w-[12rem] flex-1">
+        <span className="mb-1.5 block text-sm text-ink-2">Cuenta</span>
+        <select
+          value={cuentaId}
+          onChange={(e) => setCuentaId(e.target.value)}
+          className="h-12 w-full rounded-xl bg-card-soft px-3.5 text-sm outline-none focus:ring-2 focus:ring-accent"
+        >
+          {cuentas.map((c) => (
+            <option key={c.id} value={c.id}>
+              {c.nombre}
+            </option>
+          ))}
+        </select>
+      </label>
+
+      <label className="min-w-[12rem] flex-1">
+        <span className="mb-1.5 block text-sm text-ink-2">Meta a alcanzar</span>
+        <div className="flex items-center gap-2 rounded-xl bg-card-soft px-3.5 focus-within:ring-2 focus-within:ring-accent">
+          <span className="text-ink-3">$</span>
+          <input
+            inputMode="decimal"
+            value={monto}
+            onChange={(e) => setMonto(e.target.value.replace(/[^\d.]/g, ""))}
+            placeholder="2,000.00"
+            className="h-12 min-w-0 flex-1 bg-transparent text-sm outline-none tnum"
+          />
+        </div>
+      </label>
+
+      <Boton type="submit" disabled={!(Number(monto) > 0) || definir.isPending}>
+        <Target size={17} />
+        Asignar meta
+      </Boton>
+    </form>
   );
 }
 
@@ -133,14 +220,8 @@ function FormMeta({ cuentaId, onCerrar }: { cuentaId: number; onCerrar: () => vo
   const [fecha, setFecha] = useState("");
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 sm:items-center sm:p-4"
-      onClick={onCerrar}
-    >
+    <Hoja titulo="Meta de ahorro" onCerrar={onCerrar} ancho="max-w-md">
       <form
-        role="dialog"
-        aria-label="Definir meta de ahorro"
-        onClick={(e) => e.stopPropagation()}
         onSubmit={(e) => {
           e.preventDefault();
           if (!(Number(monto) > 0)) return;
@@ -153,42 +234,40 @@ function FormMeta({ cuentaId, onCerrar }: { cuentaId: number; onCerrar: () => vo
             { onSuccess: onCerrar },
           );
         }}
-        className="w-full max-w-md rounded-t-2xl bg-card p-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))] shadow-2xl ring-1 ring-[var(--border-ring)] sm:rounded-2xl sm:pb-5"
+        className="space-y-4"
       >
-        <h2 className="font-semibold">Meta de ahorro</h2>
-
-        <label className="mt-4 block">
-          <span className="mb-1 block text-xs text-ink-2">¿Cuánto querés juntar?</span>
-          <div className="flex items-center gap-2 rounded-xl bg-page px-3 ring-1 ring-[var(--border-ring)] focus-within:ring-2 focus-within:ring-accent">
-            <span className="text-ink-3">S/</span>
+        <label className="block">
+          <span className="mb-1.5 block text-sm font-medium">¿Cuánto querés juntar?</span>
+          <div className="flex items-center gap-2 rounded-xl bg-card-soft px-3.5 focus-within:ring-2 focus-within:ring-accent">
+            <span className="text-xl text-ink-3">$</span>
             <input
               autoFocus
               inputMode="decimal"
               value={monto}
               onChange={(e) => setMonto(e.target.value.replace(/[^\d.]/g, ""))}
               placeholder="0.00"
-              className="h-11 flex-1 bg-transparent text-lg font-semibold tabular-nums outline-none"
+              className="h-14 min-w-0 flex-1 bg-transparent text-xl font-bold outline-none tnum"
             />
           </div>
         </label>
 
-        <label className="mt-3 block">
-          <span className="mb-1 block text-xs text-ink-2">¿Para cuándo? (opcional)</span>
+        <label className="block">
+          <span className="mb-1.5 block text-sm font-medium">¿Para cuándo? (opcional)</span>
           <input
             type="date"
             value={fecha}
             onChange={(e) => setFecha(e.target.value)}
-            className="h-11 w-full rounded-xl bg-page px-3 text-sm ring-1 ring-[var(--border-ring)] outline-none [color-scheme:inherit] focus:ring-2 focus:ring-accent"
+            className="h-12 w-full rounded-xl bg-card-soft px-3.5 text-sm outline-none [color-scheme:inherit] focus:ring-2 focus:ring-accent"
           />
         </label>
 
         {definir.isError && (
-          <p role="alert" className="mt-3 text-sm text-critical">
+          <p role="alert" className="text-sm font-medium text-bad-ink">
             No se pudo guardar la meta.
           </p>
         )}
 
-        <div className="mt-5 flex gap-3">
+        <div className="flex gap-3 pt-1">
           <Boton type="button" variante="secundario" className="flex-1" onClick={onCerrar}>
             Cancelar
           </Boton>
@@ -201,6 +280,6 @@ function FormMeta({ cuentaId, onCerrar }: { cuentaId: number; onCerrar: () => vo
           </Boton>
         </div>
       </form>
-    </div>
+    </Hoja>
   );
 }

@@ -1,3 +1,4 @@
+import { Bot } from "lucide-react";
 import { useState } from "react";
 
 import { ApiError } from "@/api/client";
@@ -6,7 +7,7 @@ import { Boton } from "@/components/ui/Boton";
 import { Card } from "@/components/ui/Card";
 
 const MENSAJES: Record<string, string> = {
-  codigo_invalido_o_expirado: "El código no existe o ya venció. Pide uno nuevo al bot.",
+  codigo_invalido_o_expirado: "El código no existe o ya venció. Pedí uno nuevo al bot.",
   ya_vinculado: "Esta cuenta web ya está vinculada.",
   telegram_ya_vinculado: "Ese usuario de Telegram ya está vinculado a otra cuenta web.",
 };
@@ -25,11 +26,14 @@ export default function Vincular() {
 
   return (
     <main className="flex min-h-dvh items-center justify-center p-4">
-      <Card className="w-full max-w-sm">
-        <h1 className="text-xl font-semibold">Vincula tu Telegram</h1>
+      <Card className="w-full max-w-sm" padding="p-6">
+        <span className="flex size-12 items-center justify-center rounded-xl bg-accent-soft text-accent-ink">
+          <Bot size={24} />
+        </span>
+        <h1 className="mt-4 text-xl font-bold tracking-tight">Vinculá tu Telegram</h1>
         <p className="mt-2 text-sm text-ink-2">
-          Escribe <span className="font-mono text-ink">/vincular</span> en el bot de Telegram y
-          copia aquí el código que te dé.
+          Escribí <span className="font-semibold text-ink">/vincular</span> en el bot y copiá
+          acá el código que te dé.
         </p>
 
         <form
@@ -46,11 +50,11 @@ export default function Vincular() {
             placeholder="ABCD2345"
             maxLength={16}
             autoCapitalize="characters"
-            className="w-full touch-44 rounded-xl bg-page px-3 text-center font-mono text-lg tracking-[0.3em] text-ink ring-1 ring-[var(--border-ring)] outline-none focus:ring-2 focus:ring-accent"
+            className="h-14 w-full rounded-xl bg-card-soft text-center text-lg font-bold tracking-[0.3em] outline-none focus:ring-2 focus:ring-accent"
           />
 
           {mensajeError && (
-            <p role="alert" className="text-sm text-critical">
+            <p role="alert" className="text-sm font-medium text-bad-ink">
               {mensajeError}
             </p>
           )}
@@ -60,11 +64,7 @@ export default function Vincular() {
           </Boton>
         </form>
 
-        <Boton
-          variante="fantasma"
-          className="mt-2 w-full"
-          onClick={() => logout.mutate()}
-        >
+        <Boton variante="fantasma" className="mt-2 w-full" onClick={() => logout.mutate()}>
           Cerrar sesión
         </Boton>
       </Card>

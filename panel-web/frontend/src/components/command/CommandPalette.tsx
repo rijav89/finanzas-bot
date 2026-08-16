@@ -1,18 +1,21 @@
 import { Command } from "cmdk";
 import {
+  ArrowDownLeft,
+  ArrowUpRight,
   CalendarClock,
-  Landmark,
-  LayoutDashboard,
-  ListOrdered,
-  Minus,
+  CreditCard,
+  LayoutGrid,
   PiggyBank,
   Plus,
+  Target,
   Wallet,
+  WalletCards,
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import { useMovimientos } from "@/api/queries";
+import { IconoTile } from "@/lib/iconos";
 import { money } from "@/lib/money";
 import { useUiStore } from "@/stores/uiStore";
 
@@ -23,7 +26,7 @@ export function CommandPalette() {
   const [busqueda, setBusqueda] = useState("");
   const navigate = useNavigate();
 
-  // Ctrl/Cmd+K en desktop; en móvil el disparador es el botón de búsqueda del shell
+  // Ctrl/Cmd+K en escritorio; en móvil el disparador es el botón del header
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "k" && (e.metaKey || e.ctrlKey)) {
@@ -48,12 +51,12 @@ export function CommandPalette() {
 
   return (
     <div
-      className="fixed inset-0 z-50 bg-black/40 p-4 pt-[10vh]"
+      className="fixed inset-0 z-50 bg-black/45 p-4 pt-[10vh] backdrop-blur-[2px]"
       onClick={() => setAbierta(false)}
     >
       <Command
         label="Paleta de comandos"
-        className="mx-auto max-w-lg overflow-hidden rounded-2xl bg-card shadow-2xl ring-1 ring-[var(--border-ring)]"
+        className="mx-auto max-w-lg overflow-hidden rounded-2xl bg-card shadow-2xl ring-1 ring-[var(--ring)]"
         onClick={(e) => e.stopPropagation()}
         shouldFilter={false}
       >
@@ -62,9 +65,9 @@ export function CommandPalette() {
           value={busqueda}
           onValueChange={setBusqueda}
           placeholder="Buscar movimientos o ir a…"
-          className="w-full border-b border-hairline bg-transparent px-4 py-3.5 text-ink outline-none placeholder:text-ink-3"
+          className="w-full border-b border-hairline bg-transparent px-4 py-4 text-[15px] outline-none placeholder:text-ink-3"
         />
-        <Command.List className="max-h-80 overflow-y-auto p-2">
+        <Command.List className="max-h-[22rem] overflow-y-auto p-2">
           <Command.Empty className="px-3 py-6 text-center text-sm text-ink-3">
             Sin resultados.
           </Command.Empty>
@@ -72,19 +75,25 @@ export function CommandPalette() {
           {resultados.length > 0 && (
             <Command.Group
               heading="Movimientos"
-              className="[&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:py-1.5 [&_[cmdk-group-heading]]:text-xs [&_[cmdk-group-heading]]:text-ink-3"
+              className="[&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:py-1.5 [&_[cmdk-group-heading]]:text-xs [&_[cmdk-group-heading]]:font-semibold [&_[cmdk-group-heading]]:text-ink-3"
             >
               {resultados.map((m) => (
                 <Command.Item
                   key={`${m.tipo}-${m.id}`}
                   value={`mov-${m.tipo}-${m.id}`}
                   onSelect={() => ir("/movimientos")}
-                  className="flex touch-44 cursor-pointer items-center gap-3 rounded-xl px-3 text-sm data-[selected=true]:bg-page"
+                  className="flex cursor-pointer items-center gap-3 rounded-xl px-2 py-2 text-sm data-[selected=true]:bg-card-soft"
                 >
-                  <span className="truncate text-ink-2">
-                    {m.descripcion || m.categoria || "(sin descripción)"}
+                  <IconoTile
+                    categoria={m.categoria}
+                    ingreso={m.tipo === "ingreso"}
+                    tamano="size-9"
+                  />
+                  <span className="min-w-0 flex-1 truncate">
+                    {m.descripcion || m.categoria || "Sin descripción"}
                   </span>
-                  <span className="ml-auto shrink-0 font-medium tabular-nums">
+                  <span className="shrink-0 font-semibold tnum">
+                    {m.tipo === "ingreso" ? "+" : "-"}
                     {money(Number(m.monto))}
                   </span>
                 </Command.Item>
@@ -94,10 +103,10 @@ export function CommandPalette() {
 
           <Command.Group
             heading="Acciones"
-            className="[&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:py-1.5 [&_[cmdk-group-heading]]:text-xs [&_[cmdk-group-heading]]:text-ink-3"
+            className="[&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:py-1.5 [&_[cmdk-group-heading]]:text-xs [&_[cmdk-group-heading]]:font-semibold [&_[cmdk-group-heading]]:text-ink-3"
           >
             <Accion
-              icono={Minus}
+              icono={ArrowUpRight}
               etiqueta="Registrar gasto"
               onSelect={() => {
                 setAbierta(false);
@@ -106,7 +115,7 @@ export function CommandPalette() {
               }}
             />
             <Accion
-              icono={Plus}
+              icono={ArrowDownLeft}
               etiqueta="Registrar ingreso"
               onSelect={() => {
                 setAbierta(false);
@@ -114,23 +123,23 @@ export function CommandPalette() {
                 abrirCaptura("ingreso");
               }}
             />
-            <Accion icono={LayoutDashboard} etiqueta="Ir al panel" onSelect={() => ir("/")} />
+            <Accion icono={LayoutGrid} etiqueta="Ir al panel" onSelect={() => ir("/")} />
             <Accion
-              icono={ListOrdered}
+              icono={WalletCards}
               etiqueta="Ver movimientos"
               onSelect={() => ir("/movimientos")}
             />
             <Accion icono={Wallet} etiqueta="Ver cuentas" onSelect={() => ir("/cuentas")} />
             <Accion
-              icono={LayoutDashboard}
+              icono={Target}
               etiqueta="Ver presupuestos"
               onSelect={() => ir("/presupuestos")}
             />
-            <Accion icono={Landmark} etiqueta="Ver deudas" onSelect={() => ir("/deudas")} />
+            <Accion icono={CreditCard} etiqueta="Ver deudas" onSelect={() => ir("/deudas")} />
             <Accion icono={PiggyBank} etiqueta="Ver ahorros" onSelect={() => ir("/ahorros")} />
             <Accion
               icono={CalendarClock}
-              etiqueta="Ver pagos recurrentes"
+              etiqueta="Ver recurrentes"
               onSelect={() => ir("/recurrentes")}
             />
           </Command.Group>
@@ -153,9 +162,9 @@ function Accion({
     <Command.Item
       value={etiqueta}
       onSelect={onSelect}
-      className="flex touch-44 cursor-pointer items-center gap-3 rounded-xl px-3 text-sm text-ink-2 data-[selected=true]:bg-page data-[selected=true]:text-ink"
+      className="flex h-11 cursor-pointer items-center gap-3 rounded-xl px-3 text-sm font-medium text-ink-2 data-[selected=true]:bg-card-soft data-[selected=true]:text-ink"
     >
-      <Icono size={16} />
+      <Icono size={17} />
       {etiqueta}
     </Command.Item>
   );

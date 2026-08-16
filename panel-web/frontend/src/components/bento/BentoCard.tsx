@@ -1,29 +1,28 @@
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { ChevronDown, GripVertical } from "lucide-react";
-import { useState, type ReactNode } from "react";
+import { GripVertical } from "lucide-react";
+import type { ReactNode } from "react";
 
 import { cn } from "@/lib/cn";
 
 interface Props {
   id: string;
   titulo: string;
-  /** Métrica en superficie; el desglose se revela al expandir (progressive disclosure). */
+  subtitulo?: string;
   children: ReactNode;
-  desglose?: ReactNode;
   className?: string;
   arrastrable?: boolean;
 }
 
+/** Tarjeta del Bento: título gris arriba a la izquierda, asa de arrastre a la derecha. */
 export function BentoCard({
   id,
   titulo,
+  subtitulo,
   children,
-  desglose,
   className,
   arrastrable = true,
 }: Props) {
-  const [abierto, setAbierto] = useState(false);
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id,
     disabled: !arrastrable,
@@ -36,45 +35,29 @@ export function BentoCard({
       ref={setNodeRef}
       style={{ transform: CSS.Translate.toString(transform), transition }}
       className={cn(
-        "rounded-2xl bg-card p-3.5 ring-1 ring-[var(--border-ring)] sm:p-5",
-        isDragging && "z-10 opacity-80 shadow-xl",
+        "rounded-2xl bg-card p-5 shadow-[0_1px_2px_rgba(17,24,39,0.04)] ring-1 ring-[var(--ring)]",
+        isDragging && "z-10 opacity-90 shadow-xl",
         className,
       )}
     >
-      <header className="flex items-center gap-2">
-        <h2 className="text-[13px] font-medium text-ink-2 sm:text-sm">{titulo}</h2>
-        {desglose && (
-          <button
-            onClick={() => setAbierto((v) => !v)}
-            aria-expanded={abierto}
-            className="ml-auto text-ink-3 hover:text-ink-2"
-          >
-            <ChevronDown
-              size={18}
-              className={cn("transition-transform", abierto && "rotate-180")}
-            />
-          </button>
-        )}
+      <header className="flex items-start gap-2">
+        <div className="min-w-0 flex-1">
+          <h2 className="text-[15px] font-medium text-ink-2">{titulo}</h2>
+          {subtitulo && <p className="mt-1 text-sm text-ink-3">{subtitulo}</p>}
+        </div>
         {arrastrable && (
           <button
             {...attributes}
             {...listeners}
             aria-label={`Reordenar ${titulo}`}
-            className={cn(
-              "cursor-grab touch-none text-ink-3 hover:text-ink-2 active:cursor-grabbing",
-              !desglose && "ml-auto",
-            )}
+            className="-mr-1 -mt-1 cursor-grab touch-none rounded-lg p-1 text-ink-3/70 transition-colors hover:text-ink-2 active:cursor-grabbing"
           >
-            <GripVertical size={18} />
+            <GripVertical size={16} />
           </button>
         )}
       </header>
 
-      <div className="mt-2 sm:mt-3">{children}</div>
-
-      {desglose && abierto && (
-        <div className="mt-3 border-t border-hairline pt-3 sm:mt-4 sm:pt-4">{desglose}</div>
-      )}
+      {children}
     </section>
   );
 }

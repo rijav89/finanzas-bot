@@ -86,6 +86,54 @@ function useInvalidarFinanzas() {
   };
 }
 
+export function useCrearCuenta() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: {
+      nombre: string;
+      tipo: "corriente" | "ahorro";
+      saldo_inicial: string;
+    }) => api("/cuentas", { method: "POST", body }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["cuentas"] });
+      qc.invalidateQueries({ queryKey: ["dashboard"] });
+    },
+  });
+}
+
+export function useEditarCuenta() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, ...body }: { id: number; nombre?: string; tipo?: string }) =>
+      api(`/cuentas/${id}`, { method: "PATCH", body }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["cuentas"] });
+      qc.invalidateQueries({ queryKey: ["dashboard"] });
+      qc.invalidateQueries({ queryKey: ["ahorros"] });
+    },
+  });
+}
+
+export function useArchivarCuenta() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: number) => api(`/cuentas/${id}`, { method: "DELETE" }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["cuentas"] });
+      qc.invalidateQueries({ queryKey: ["dashboard"] });
+    },
+  });
+}
+
+export function useEliminarMovimiento() {
+  const invalidar = useInvalidarFinanzas();
+  return useMutation({
+    mutationFn: ({ tipo, id }: { tipo: "gastos" | "ingresos"; id: number }) =>
+      api(`/${tipo}/${id}`, { method: "DELETE" }),
+    onSuccess: invalidar,
+  });
+}
+
 export function useCategorias() {
   return useQuery({
     queryKey: ["categorias"],
@@ -200,6 +248,15 @@ export function useCrearRecurrente() {
   return useMutation({
     mutationFn: (body: Record<string, unknown>) =>
       api("/recurrentes", { method: "POST", body }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["recurrentes"] }),
+  });
+}
+
+export function useEditarRecurrente() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, ...body }: { id: number } & Record<string, unknown>) =>
+      api(`/recurrentes/${id}`, { method: "PATCH", body }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["recurrentes"] }),
   });
 }

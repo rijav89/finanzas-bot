@@ -1,17 +1,15 @@
-import { ArrowDownLeft, ArrowUpRight, ChevronDown } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { ArrowDownLeft, ArrowUpRight, Calendar, Check, Pencil, Plus, X } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 
 import { useCrearMovimiento, useCuentas } from "@/api/queries";
 import { CATEGORIAS, CATEGORIAS_INGRESO } from "@/api/types";
-import { Boton } from "@/components/ui/Boton";
 import { cn } from "@/lib/cn";
+import { iconoCategoria } from "@/lib/iconos";
+import { money } from "@/lib/money";
 import { useUiStore, type TipoMovimiento } from "@/stores/uiStore";
 
-/** Captura conversacional "Mad Libs" para gastos e ingresos.
- *
- *  Layout: bottom sheet en móvil / diálogo centrado en desktop, con cabecera y
- *  acciones fijas y cuerpo scrolleable — así el teclado virtual nunca tapa el
- *  monto ni el botón de confirmar. */
+/** Captura por pasos: 4 respuestas y listo. Bottom sheet en móvil, diálogo en escritorio.
+ *  Cabecera y acciones fijas para que el teclado virtual nunca tape el monto ni el botón. */
 export function CapturaRapida() {
   const tipoInicial = useUiStore((s) => s.captura);
   const cerrar = useUiStore((s) => s.cerrarCaptura);
@@ -25,10 +23,11 @@ export function CapturaRapida() {
   const [cuentaId, setCuentaId] = useState<number | null>(null);
   const [fecha, setFecha] = useState(hoyISO);
   const [nota, setNota] = useState("");
+  const [verFecha, setVerFecha] = useState(false);
+  const [verTodasCat, setVerTodasCat] = useState(false);
 
   const abierto = tipoInicial !== null;
 
-  // Reset al abrir: la pestaña la decide quien dispara (FAB, paleta de comandos)
   useEffect(() => {
     if (!abierto) return;
     setTipo(tipoInicial);
@@ -36,6 +35,8 @@ export function CapturaRapida() {
     setMonto("");
     setNota("");
     setFecha(hoyISO());
+    setVerFecha(false);
+    setVerTodasCat(false);
     crear.reset();
     // crear.reset es estable; solo interesa reaccionar a la apertura
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -47,7 +48,6 @@ export function CapturaRapida() {
     }
   }, [cuentas, cuentaId]);
 
-  // Escape cierra; bloquear scroll del fondo mientras está abierto
   useEffect(() => {
     if (!abierto) return;
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && cerrar();
@@ -60,15 +60,12 @@ export function CapturaRapida() {
     };
   }, [abierto, cerrar]);
 
-  const categorias = tipo === "gasto" ? CATEGORIAS : CATEGORIAS_INGRESO;
-  const montoValido = Number(monto) > 0;
-
-  const cuentasOpts = useMemo(
-    () => (cuentas ?? []).map((c) => ({ valor: String(c.id), etiqueta: c.nombre })),
-    [cuentas],
-  );
-
   if (!abierto) return null;
+
+  const esGasto = tipo === "gasto";
+  const catsBase = esGasto ? CATEGORIAS : CATEGORIAS_INGRESO;
+  const cats = verTodasCat ? catsBase : catsBase.slice(0, 7);
+  const montoValido = Number(monto) > 0;
 
   function cambiarTipo(nuevo: TipoMovimiento) {
     setTipo(nuevo);
@@ -76,11 +73,24 @@ export function CapturaRapida() {
     montoRef.current?.focus();
   }
 
-  const esGasto = tipo === "gasto";
+  function enviar() {
+    if (!montoValido || cuentaId === null) return;
+    crear.mutate(
+      {
+        tipo,
+        monto,
+        categoria,
+        cuenta_id: cuentaId,
+        fecha,
+        ...(nota.trim() ? { descripcion: nota.trim() } : {}),
+      },
+      { onSuccess: cerrar },
+    );
+  }
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 sm:items-center sm:p-4"
+      className="fixed inset-0 z-50 flex items-end justify-center bg-black/45 backdrop-blur-[2px] sm:items-center sm:p-4"
       onClick={cerrar}
     >
       <form
@@ -89,40 +99,45 @@ export function CapturaRapida() {
         onClick={(e) => e.stopPropagation()}
         onSubmit={(e) => {
           e.preventDefault();
-          if (!montoValido || cuentaId === null) return;
-          crear.mutate(
-            {
-              tipo,
-              monto,
-              categoria,
-              cuenta_id: cuentaId,
-              fecha,
-              ...(nota.trim() ? { descripcion: nota.trim() } : {}),
-            },
-            { onSuccess: cerrar },
-          );
+          enviar();
         }}
-        className="flex max-h-[94dvh] w-full max-w-lg flex-col rounded-t-2xl bg-card shadow-2xl ring-1 ring-[var(--border-ring)] sm:max-h-[88dvh] sm:rounded-2xl"
+        className="flex max-h-[94dvh] w-full max-w-[34rem] flex-col rounded-t-2xl bg-card shadow-2xl sm:max-h-[90dvh] sm:rounded-2xl"
       >
-        {/* ── Cabecera fija: tipo + monto ── */}
-        <div className="shrink-0 px-4 pt-3 sm:px-6 sm:pt-5">
-          {/* Asa del bottom sheet (solo móvil) */}
-          <div
-            aria-hidden
-            className="mx-auto mb-3 h-1 w-9 rounded-full bg-ink-3/30 sm:hidden"
-          />
+        {/* ── Cabecera ── */}
+        <div className="shrink-0 px-5 pt-4 sm:px-6 sm:pt-6">
+          <div aria-hidden className="mx-auto mb-3 h-1 w-9 rounded-full bg-hairline sm:hidden" />
+          <div className="flex items-start gap-3">
+            <div className="min-w-0 flex-1">
+              <h2 className="text-xl font-bold tracking-tight">Nuevo movimiento</h2>
+              <p className="mt-0.5 text-sm text-ink-2">
+                <span className="hidden sm:inline">
+                  Respondé de arriba hacia abajo, sin salir del teclado
+                </span>
+                <span className="sm:hidden">4 respuestas y listo</span>
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={cerrar}
+              aria-label="Cerrar"
+              className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-card-soft text-ink-2 transition-colors hover:text-ink"
+            >
+              <X size={18} />
+            </button>
+          </div>
 
+          {/* Segmento Gasto / Ingreso */}
           <div
             role="tablist"
             aria-label="Tipo de movimiento"
-            className="mx-auto flex w-full max-w-[17rem] rounded-lg bg-page p-1"
+            className="mt-4 flex rounded-xl bg-card-soft p-1"
           >
             {(
               [
-                { valor: "gasto", etiqueta: "Gasto", Icono: ArrowUpRight },
-                { valor: "ingreso", etiqueta: "Ingreso", Icono: ArrowDownLeft },
+                { valor: "gasto", etiqueta: "Gasto", Icono: ArrowUpRight, color: "text-bad" },
+                { valor: "ingreso", etiqueta: "Ingreso", Icono: ArrowDownLeft, color: "text-good-ink" },
               ] as const
-            ).map(({ valor, etiqueta, Icono }) => {
+            ).map(({ valor, etiqueta, Icono, color }) => {
               const activo = tipo === valor;
               return (
                 <button
@@ -132,172 +147,220 @@ export function CapturaRapida() {
                   aria-selected={activo}
                   onClick={() => cambiarTipo(valor)}
                   className={cn(
-                    "flex h-9 flex-1 items-center justify-center gap-1.5 rounded-md text-sm font-semibold transition-colors",
-                    !activo && "text-ink-3",
-                    activo && valor === "gasto" && "bg-critical/15 text-critical",
-                    activo && valor === "ingreso" && "bg-good/15 text-good-text",
+                    "flex h-11 flex-1 items-center justify-center gap-2 rounded-lg text-[15px] font-semibold transition-colors",
+                    activo
+                      ? "bg-card text-ink shadow-sm ring-1 ring-[var(--ring)]"
+                      : "text-ink-2",
                   )}
                 >
-                  <Icono size={15} aria-hidden />
+                  <Icono size={16} className={activo ? color : undefined} aria-hidden />
                   {etiqueta}
                 </button>
               );
             })}
           </div>
-
-          {/* Monto protagonista, teñido según el tipo */}
-          <div className="mt-4 flex items-baseline justify-center gap-1 sm:mt-5">
-            <span
-              className={cn(
-                "text-xl sm:text-2xl",
-                esGasto ? "text-critical/70" : "text-good-text/70",
-              )}
-            >
-              {esGasto ? "−" : "+"} S/
-            </span>
-            <input
-              ref={montoRef}
-              autoFocus
-              inputMode="decimal"
-              value={monto}
-              onChange={(e) => setMonto(e.target.value.replace(",", ".").replace(/[^\d.]/g, ""))}
-              placeholder="0.00"
-              aria-label="Monto"
-              className={cn(
-                "w-36 bg-transparent text-center text-[2.5rem] font-semibold leading-none tracking-tight outline-none placeholder:text-ink-3/40 sm:w-40 sm:text-5xl",
-                esGasto ? "text-critical" : "text-good-text",
-              )}
-            />
-          </div>
         </div>
 
         {/* ── Cuerpo scrolleable ── */}
-        <div className="min-h-0 flex-1 overflow-y-auto px-4 pt-4 sm:px-6 sm:pt-5">
-          <p className="text-center text-[15px] leading-[2.6rem] text-ink-2 sm:text-[17px] sm:leading-[2.9rem]">
-            {esGasto ? "Gasté en " : "Recibí de "}
-            <Slot>
-              <Select
-                valor={categoria}
-                onChange={setCategoria}
-                opciones={categorias}
-                aria-label="Categoría"
+        <div className="min-h-0 flex-1 overflow-y-auto px-5 py-5 sm:px-6">
+          <Paso n={1} pregunta={esGasto ? "¿Cuánto gastaste?" : "¿Cuánto recibiste?"}>
+            <div
+              className={cn(
+                "flex items-center gap-2 rounded-xl bg-card-soft px-4 transition-shadow",
+                "ring-2",
+                montoValido ? "ring-accent" : "ring-transparent",
+              )}
+            >
+              <span className="text-2xl font-semibold text-ink-3">$</span>
+              <input
+                ref={montoRef}
+                autoFocus
+                inputMode="decimal"
+                value={monto}
+                onChange={(e) =>
+                  setMonto(e.target.value.replace(",", ".").replace(/[^\d.]/g, ""))
+                }
+                placeholder="0.00"
+                aria-label="Monto"
+                className="h-[4.25rem] min-w-0 flex-1 bg-transparent text-[2.25rem] font-bold tracking-tight outline-none placeholder:text-ink-3/50 tnum"
               />
-            </Slot>{" "}
-            {esGasto ? "pagando con " : "en "}
-            <Slot>
-              <Select
-                valor={String(cuentaId ?? "")}
-                onChange={(v) => setCuentaId(Number(v))}
-                opciones={cuentasOpts}
-                aria-label="Cuenta"
-              />
-            </Slot>{" "}
-            el{" "}
-            <Slot>
+              <span className="text-sm font-medium text-ink-3">PEN</span>
+            </div>
+          </Paso>
+
+          <Paso n={2} pregunta="¿En qué categoría?">
+            <div className="flex flex-wrap gap-2">
+              {cats.map((c) => {
+                const Icono = iconoCategoria(c);
+                return (
+                  <Chip key={c} activo={categoria === c} onClick={() => setCategoria(c)}>
+                    <Icono size={15} aria-hidden />
+                    {c}
+                  </Chip>
+                );
+              })}
+              {!verTodasCat && catsBase.length > 7 && (
+                <Chip activo={false} onClick={() => setVerTodasCat(true)}>
+                  <Plus size={15} aria-hidden />
+                  Otra
+                </Chip>
+              )}
+            </div>
+          </Paso>
+
+          <Paso n={3} pregunta={esGasto ? "¿Desde qué cuenta?" : "¿En qué cuenta?"}>
+            <div className="flex flex-wrap gap-2">
+              {(cuentas ?? []).map((c) => (
+                <Chip key={c.id} activo={cuentaId === c.id} onClick={() => setCuentaId(c.id)}>
+                  {c.nombre}
+                </Chip>
+              ))}
+            </div>
+          </Paso>
+
+          <Paso n={4} pregunta="¿Cuándo fue?">
+            <div className="flex flex-wrap gap-2">
+              {[
+                { etiqueta: "Hoy", valor: hoyISO() },
+                { etiqueta: "Ayer", valor: desplazarDias(-1) },
+                { etiqueta: "Anteayer", valor: desplazarDias(-2) },
+              ].map((d) => (
+                <Chip
+                  key={d.etiqueta}
+                  activo={!verFecha && fecha === d.valor}
+                  onClick={() => {
+                    setFecha(d.valor);
+                    setVerFecha(false);
+                  }}
+                >
+                  {d.etiqueta}
+                </Chip>
+              ))}
+              <Chip activo={verFecha} onClick={() => setVerFecha(true)}>
+                <Calendar size={15} aria-hidden />
+                <span className="hidden sm:inline">Elegir fecha</span>
+                <span className="sm:hidden">Fecha</span>
+              </Chip>
+            </div>
+            {verFecha && (
               <input
                 type="date"
                 value={fecha}
                 max={hoyISO()}
                 onChange={(e) => e.target.value && setFecha(e.target.value)}
                 aria-label="Fecha"
-                className="bg-transparent text-sm font-medium text-ink outline-none [color-scheme:inherit] sm:text-[15px]"
+                className="mt-2 h-11 w-full rounded-xl bg-card-soft px-3 text-sm outline-none [color-scheme:inherit] focus:ring-2 focus:ring-accent"
               />
-            </Slot>
-          </p>
+            )}
+          </Paso>
 
-          <div className="mt-1 flex justify-center gap-1.5">
-            {[
-              { etiqueta: "Hoy", valor: hoyISO() },
-              { etiqueta: "Ayer", valor: desplazarDias(-1) },
-              { etiqueta: "Anteayer", valor: desplazarDias(-2) },
-            ].map((d) => (
-              <button
-                key={d.etiqueta}
-                type="button"
-                onClick={() => setFecha(d.valor)}
-                className={cn(
-                  "h-8 rounded-lg px-2.5 text-xs font-medium transition-colors",
-                  fecha === d.valor
-                    ? "bg-accent/15 text-accent"
-                    : "text-ink-3 hover:bg-page hover:text-ink-2",
-                )}
-              >
-                {d.etiqueta}
-              </button>
-            ))}
+          <div className="mt-5 flex items-center gap-2 rounded-xl bg-card-soft px-3.5">
+            <Pencil size={15} className="shrink-0 text-ink-3" aria-hidden />
+            <input
+              value={nota}
+              onChange={(e) => setNota(e.target.value)}
+              placeholder={
+                esGasto ? "Nota (opcional) — ej. compra semanal" : "Nota (opcional) — ej. sueldo"
+              }
+              maxLength={300}
+              className="h-12 min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-ink-3"
+            />
           </div>
 
-          <input
-            value={nota}
-            onChange={(e) => setNota(e.target.value)}
-            placeholder={esGasto ? "¿En qué? (opcional)" : "¿De quién? (opcional)"}
-            maxLength={300}
-            className="mt-4 h-11 w-full rounded-xl bg-page px-3.5 text-sm text-ink ring-1 ring-[var(--border-ring)] outline-none focus:ring-2 focus:ring-accent"
-          />
-
           {crear.isError && (
-            <p role="alert" className="mt-3 text-center text-sm text-critical">
-              No se pudo registrar. Intenta de nuevo.
+            <p role="alert" className="mt-3 text-sm font-medium text-bad-ink">
+              No se pudo registrar. Intentá de nuevo.
             </p>
           )}
         </div>
 
-        {/* ── Acciones fijas: siempre visibles sobre el teclado ── */}
-        <div className="shrink-0 border-t border-hairline px-4 py-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] sm:px-6 sm:py-4 sm:pb-4">
-          <div className="flex gap-3">
-            <Boton type="button" variante="secundario" className="flex-1" onClick={cerrar}>
+        {/* ── Acciones fijas ── */}
+        <div className="shrink-0 border-t border-hairline px-5 py-3.5 pb-[calc(0.875rem+env(safe-area-inset-bottom))] sm:px-6 sm:py-4 sm:pb-4">
+          {/* Escritorio: atajos + Cancelar + Guardar */}
+          <div className="hidden items-center gap-3 sm:flex">
+            <p className="text-xs text-ink-3">Enter para guardar · Esc para cancelar</p>
+            <button
+              type="button"
+              onClick={cerrar}
+              className="ml-auto h-11 rounded-xl bg-card px-5 text-sm font-semibold text-ink shadow-sm ring-1 ring-[var(--ring)] transition-colors hover:bg-card-soft"
+            >
               Cancelar
-            </Boton>
-            <Boton type="submit" className="flex-[2]" disabled={!montoValido || crear.isPending}>
-              {crear.isPending ? "Guardando…" : esGasto ? "Registrar gasto" : "Registrar ingreso"}
-            </Boton>
+            </button>
+            <button
+              type="submit"
+              disabled={!montoValido || crear.isPending}
+              className="inline-flex h-11 items-center gap-2 rounded-xl bg-accent px-5 text-sm font-semibold text-white transition-colors hover:bg-accent-hover disabled:opacity-50"
+            >
+              <Check size={17} />
+              {crear.isPending ? "Guardando…" : esGasto ? "Guardar gasto" : "Guardar ingreso"}
+            </button>
           </div>
+
+          {/* Móvil: un solo botón ancho con el monto */}
+          <button
+            type="submit"
+            disabled={!montoValido || crear.isPending}
+            className="inline-flex h-14 w-full items-center justify-center gap-2 rounded-xl bg-accent text-[15px] font-semibold text-white transition-colors disabled:opacity-50 sm:hidden"
+          >
+            <Check size={18} />
+            {crear.isPending
+              ? "Guardando…"
+              : montoValido
+                ? `Guardar ${esGasto ? "gasto" : "ingreso"} de ${money(Number(monto))}`
+                : `Guardar ${esGasto ? "gasto" : "ingreso"}`}
+          </button>
         </div>
       </form>
     </div>
   );
 }
 
-function Slot({ children }: { children: React.ReactNode }) {
-  return <span className="slot">{children}</span>;
+/** Bloque de pregunta con su número en círculo, como el mockup. */
+function Paso({
+  n,
+  pregunta,
+  children,
+}: {
+  n: number;
+  pregunta: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className={n === 1 ? "" : "mt-5"}>
+      <div className="mb-2 flex items-center gap-2">
+        <span className="flex size-5 items-center justify-center rounded-full bg-accent-soft text-[11px] font-bold text-accent-ink">
+          {n}
+        </span>
+        <span className="text-sm font-semibold">{pregunta}</span>
+      </div>
+      {children}
+    </div>
+  );
 }
 
-type Opcion = { valor: string; etiqueta: string };
-
-/** Select nativo (picker del sistema en móvil) presentado como palabra de la frase. */
-function Select({
-  valor,
-  onChange,
-  opciones,
-  ...props
+function Chip({
+  activo,
+  onClick,
+  children,
 }: {
-  valor: string;
-  onChange: (v: string) => void;
-  opciones: readonly string[] | Opcion[];
-} & Omit<React.SelectHTMLAttributes<HTMLSelectElement>, "value" | "onChange">) {
-  const items: Opcion[] = opciones.map((o) =>
-    typeof o === "string" ? { valor: o, etiqueta: o } : o,
-  );
+  activo: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
   return (
-    <span className="relative inline-flex items-center pr-4">
-      <select
-        {...props}
-        value={valor}
-        onChange={(e) => onChange(e.target.value)}
-        className="appearance-none bg-transparent text-sm font-medium text-ink outline-none sm:text-[15px]"
-      >
-        {items.map((o) => (
-          <option key={o.valor} value={o.valor}>
-            {o.etiqueta}
-          </option>
-        ))}
-      </select>
-      <ChevronDown
-        size={14}
-        aria-hidden
-        className="pointer-events-none absolute right-0 text-ink-3"
-      />
-    </span>
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={activo}
+      className={cn(
+        "inline-flex h-11 items-center gap-1.5 rounded-full px-4 text-sm font-medium transition-colors",
+        activo
+          ? "bg-accent-soft text-accent-ink ring-1 ring-accent/40"
+          : "bg-card-soft text-ink-2 hover:text-ink",
+      )}
+    >
+      {children}
+    </button>
   );
 }
 

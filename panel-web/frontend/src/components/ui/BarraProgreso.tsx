@@ -1,36 +1,42 @@
-import type { Semaforo } from "@/api/types";
 import { cn } from "@/lib/cn";
 
-const COLOR: Record<Semaforo, string> = {
-  bien: "var(--status-good)",
-  atencion: "var(--status-warning)",
-  critico: "var(--status-critical)",
-  info: "var(--series-1)",
+export type TonoBarra = "good" | "warn" | "bad" | "accent" | "serie";
+
+const COLORES: Record<TonoBarra, string> = {
+  good: "var(--good)",
+  warn: "var(--warn)",
+  bad: "var(--bad)",
+  accent: "var(--accent)",
+  serie: "var(--s1)",
 };
 
-/** Barra sobre riel: la longitud se lee como proporción, no como valor suelto.
- *  El color nunca va solo — siempre acompañado del texto del porcentaje. */
+/** Barra sobre riel gris, como el mockup. `color` acepta un tono o un CSS var de serie. */
 export function BarraProgreso({
   porcentaje,
-  estado = "info",
+  tono = "accent",
+  color,
+  altura = "h-2",
   className,
 }: {
   porcentaje: number;
-  estado?: Semaforo;
+  tono?: TonoBarra;
+  /** Override directo (ej. "var(--s2)") para barras por categoría. */
+  color?: string;
+  altura?: string;
   className?: string;
 }) {
   const ancho = Math.min(Math.max(porcentaje, 0), 100);
   return (
     <div
-      className={cn("h-2 overflow-hidden rounded-full bg-page", className)}
+      className={cn("overflow-hidden rounded-full bg-card-soft", altura, className)}
       role="progressbar"
       aria-valuenow={Math.round(porcentaje)}
       aria-valuemin={0}
       aria-valuemax={100}
     >
       <div
-        className="h-full rounded-full transition-[width]"
-        style={{ width: `${ancho}%`, background: COLOR[estado] }}
+        className="h-full rounded-full transition-[width] duration-300"
+        style={{ width: `${ancho}%`, background: color ?? COLORES[tono] }}
       />
     </div>
   );

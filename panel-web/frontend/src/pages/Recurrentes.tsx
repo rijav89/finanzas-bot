@@ -1,14 +1,23 @@
-import { CalendarClock, Plus, Trash2 } from "lucide-react";
+import { Bot, CalendarClock, CalendarDays, MoreHorizontal, Plus } from "lucide-react";
 import { useState } from "react";
 
 import {
   useCategorias,
   useCrearRecurrente,
   useCuentas,
+  useDashboard,
+  useEditarRecurrente,
   useEliminarRecurrente,
   useRecurrentes,
 } from "@/api/queries";
+import { HeaderMovil } from "@/components/layout/AppShell";
+import { Badge } from "@/components/ui/Badge";
 import { Boton } from "@/components/ui/Boton";
+import { Card, PageHeader } from "@/components/ui/Card";
+import { Hoja } from "@/components/ui/Hoja";
+import { Toggle } from "@/components/ui/Toggle";
+import { cn } from "@/lib/cn";
+import { iconoCategoria } from "@/lib/iconos";
 import { money } from "@/lib/money";
 
 const FRECUENCIAS = [
@@ -18,83 +27,164 @@ const FRECUENCIAS = [
 ] as const;
 
 export default function Recurrentes() {
-  const { data, isLoading } = useRecurrentes();
+  const { data, isPending } = useRecurrentes();
+  const { data: dash } = useDashboard();
+  const editar = useEditarRecurrente();
   const eliminar = useEliminarRecurrente();
   const [creando, setCreando] = useState(false);
 
-  return (
-    <div className="mx-auto max-w-3xl pb-8">
-      <header className="flex items-center gap-3 py-4">
-        <h1 className="text-xl font-semibold">Pagos recurrentes</h1>
-        <Boton className="ml-auto" onClick={() => setCreando(true)}>
-          <Plus size={16} className="mr-1.5 inline" />
-          Nuevo
-        </Boton>
-      </header>
+  const items = data?.items ?? [];
+  const ingresos = Number(dash?.ingresos_mes ?? 0);
+  const pctIngresos =
+    ingresos > 0 ? Math.round(((data?.total_mensual ?? 0) / ingresos) * 100) : null;
 
-      {isLoading && <div className="h-32 animate-pulse rounded-2xl bg-card" />}
+  const dias = items
+    .map((p) => diasHasta(p.proximo_vencimiento))
+    .filter((d) => d >= 0)
+    .sort((a, b) => a - b);
+  const proximo = dias[0];
+
+  return (
+    <>
+      <HeaderMovil titulo="Recurrentes" subtitulo={`${items.length} activos`} />
+      <div className="hidden lg:block">
+        <PageHeader
+          titulo="Recurrentes"
+          subtitulo="Alquiler, servicios y suscripciones"
+          acciones={
+            <Boton onClick={() => setCreando(true)}>
+              <Plus size={18} />
+              Nuevo recurrente
+            </Boton>
+          }
+        />
+      </div>
+
+      {isPending && <div className="h-32 animate-pulse rounded-2xl bg-card" />}
 
       {data && (
         <>
-          <section className="rounded-2xl bg-card p-4 ring-1 ring-[var(--border-ring)] sm:p-5">
-            <p className="text-sm text-ink-2">Compromiso mensual</p>
-            <p className="mt-1 text-3xl font-semibold tabular-nums">
-              {money(data.total_mensual)}
-            </p>
-            <p className="mt-1 text-xs text-ink-3">
-              El bot te avisa el día que vence cada uno.
-            </p>
-          </section>
-
-          {data.items.length === 0 ? (
-            <div className="mt-4 rounded-2xl bg-card p-6 text-center ring-1 ring-[var(--border-ring)]">
-              <CalendarClock size={28} className="mx-auto text-ink-3" />
-              <p className="mt-3 text-sm text-ink-2">Sin pagos recurrentes.</p>
-              <p className="mt-1 text-xs text-ink-3">
-                Anotá alquiler, servicios o suscripciones para no olvidarlos.
+          <div className="mb-4 grid gap-4 lg:grid-cols-[minmax(0,1fr)_1.6fr]">
+            <Card>
+              <h2 className="font-semibold text-ink-2">Compromiso mensual</h2>
+              <div className="mt-3 flex flex-wrap items-center gap-3">
+                <p className="text-[2.25rem] font-bold leading-none tracking-tight tnum">
+                  {money(data.total_mensual)}
+                </p>
+                {pctIngresos !== null && (
+                  <Badge tono={pctIngresos > 50 ? "bad" : pctIngresos > 30 ? "warn" : "good"}>
+                    {pctIngresos}% de tus ingresos
+                  </Badge>
+                )}
+              </div>
+              <p className="mt-3 text-sm text-ink-2">
+                {items.length} recurrentes activos
+                {proximo !== undefined &&
+                  ` · el más próximo vence ${proximo === 0 ? "hoy" : `en ${proximo} días`}`}
               </p>
+            </Card>
+
+            <Card>
+              <div className="flex items-start gap-4">
+                <span className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-accent-soft text-accent-ink">
+                  <Bot size={20} />
+                </span>
+                <div className="min-w-0 flex-1">
+                  <p className="font-semibold">Te aviso el día que vence cada uno</p>
+                  <p className="mt-1 text-sm text-ink-2">
+                    Todo lo que cargues acá se convierte en un recordatorio del bot. Confirmás el
+                    pago desde el chat y queda registrado como gasto.
+                  </p>
+                </div>
+              </div>
+            </Card>
+          </div>
+
+          <Card padding="p-0">
+            <div className="flex flex-wrap items-center gap-2 px-5 py-4">
+              <h2 className="font-semibold">Todos los recurrentes</h2>
+              <p className="ml-auto text-sm text-ink-3">Ordenados por día de vencimiento</p>
             </div>
-          ) : (
-            <section className="mt-4 space-y-2">
-              {data.items.map((p) => (
-                <article
-                  key={p.id}
-                  className="flex items-center gap-3 rounded-xl bg-card p-3.5 ring-1 ring-[var(--border-ring)]"
-                >
-                  <div className="flex size-10 shrink-0 flex-col items-center justify-center rounded-lg bg-page">
-                    <span className="text-sm font-semibold leading-none tabular-nums">
-                      {p.dia_mes}
-                    </span>
-                    <span className="mt-0.5 text-[9px] uppercase text-ink-3">día</span>
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-medium">{p.descripcion}</p>
-                    <p className="mt-0.5 text-xs text-ink-3">
-                      {p.categoria}
-                      {p.frecuencia !== "mensual" &&
-                        ` · ${FRECUENCIAS.find((f) => f.valor === p.frecuencia)?.etiqueta}`}
-                    </p>
-                  </div>
-                  <span className="shrink-0 text-sm font-semibold tabular-nums">
-                    {money(p.monto)}
-                  </span>
-                  <button
-                    onClick={() => eliminar.mutate(p.id)}
-                    aria-label={`Eliminar ${p.descripcion}`}
-                    className="flex size-9 shrink-0 items-center justify-center rounded-lg text-ink-3 hover:text-critical"
-                  >
-                    <Trash2 size={16} />
-                  </button>
-                </article>
-              ))}
-            </section>
-          )}
+
+            {items.length === 0 ? (
+              <div className="px-5 pb-10 pt-2 text-center">
+                <CalendarClock size={30} className="mx-auto text-ink-3" />
+                <p className="mt-3 font-semibold">Sin pagos recurrentes</p>
+                <p className="mt-1 text-sm text-ink-3">
+                  Anotá alquiler, servicios o suscripciones para no olvidarlos.
+                </p>
+              </div>
+            ) : (
+              <ul className="px-2 pb-2">
+                {items.map((p) => {
+                  const Icono = iconoCategoria(p.categoria);
+                  const d = diasHasta(p.proximo_vencimiento);
+                  return (
+                    <li key={p.id}>
+                      <div
+                        className={cn(
+                          "flex flex-wrap items-center gap-3 rounded-xl px-3 py-3.5 transition-colors hover:bg-card-soft",
+                          !p.activo && "opacity-55",
+                        )}
+                      >
+                        <span className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-card-soft text-ink-2">
+                          <Icono size={19} />
+                        </span>
+
+                        <div className="min-w-0 flex-1">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <p className="truncate font-semibold">{p.descripcion}</p>
+                            {p.activo && d >= 0 && d <= 3 && (
+                              <Badge tono="warn">
+                                {d === 0 ? "Vence hoy" : `Vence en ${d} días`}
+                              </Badge>
+                            )}
+                          </div>
+                          <p className="mt-0.5 truncate text-sm text-ink-2">{p.categoria}</p>
+                        </div>
+
+                        <span className="hidden shrink-0 items-center gap-1.5 text-sm text-ink-2 sm:flex">
+                          <CalendarDays size={15} />
+                          {p.frecuencia === "mensual"
+                            ? `Día ${p.dia_mes} de cada mes`
+                            : FRECUENCIAS.find((f) => f.valor === p.frecuencia)?.etiqueta}
+                        </span>
+
+                        <span className="shrink-0 font-bold tnum">{money(p.monto)}</span>
+
+                        <Toggle
+                          activo={!!p.activo}
+                          etiqueta={`Activar ${p.descripcion}`}
+                          onChange={(v) => editar.mutate({ id: p.id, activo: v })}
+                        />
+
+                        <button
+                          onClick={() => eliminar.mutate(p.id)}
+                          aria-label={`Eliminar ${p.descripcion}`}
+                          className="flex size-9 shrink-0 items-center justify-center rounded-lg text-ink-3 hover:text-ink"
+                        >
+                          <MoreHorizontal size={18} />
+                        </button>
+                      </div>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </Card>
         </>
       )}
 
       {creando && <FormRecurrente onCerrar={() => setCreando(false)} />}
-    </div>
+    </>
   );
+}
+
+function diasHasta(iso: string): number {
+  const hoy = new Date();
+  hoy.setHours(0, 0, 0, 0);
+  const [a, m, d] = iso.split("-").map(Number);
+  return Math.round((new Date(a, m - 1, d).getTime() - hoy.getTime()) / 86_400_000);
 }
 
 function FormRecurrente({ onCerrar }: { onCerrar: () => void }) {
@@ -113,14 +203,8 @@ function FormRecurrente({ onCerrar }: { onCerrar: () => void }) {
   const valido = descripcion.trim() && Number(monto) > 0 && diaNum >= 1 && diaNum <= 31;
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 sm:items-center sm:p-4"
-      onClick={onCerrar}
-    >
+    <Hoja titulo="Nuevo recurrente" onCerrar={onCerrar}>
       <form
-        role="dialog"
-        aria-label="Nuevo pago recurrente"
-        onClick={(e) => e.stopPropagation()}
         onSubmit={(e) => {
           e.preventDefault();
           if (!valido) return;
@@ -136,51 +220,52 @@ function FormRecurrente({ onCerrar }: { onCerrar: () => void }) {
             { onSuccess: onCerrar },
           );
         }}
-        className="w-full max-w-md rounded-t-2xl bg-card p-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))] shadow-2xl ring-1 ring-[var(--border-ring)] sm:rounded-2xl sm:pb-5"
+        className="space-y-4"
       >
-        <h2 className="font-semibold">Nuevo pago recurrente</h2>
-
-        <label className="mt-4 block">
-          <span className="mb-1 block text-xs text-ink-2">¿Qué pagás?</span>
+        <label className="block">
+          <span className="mb-1.5 block text-sm font-medium">¿Qué pagás?</span>
           <input
             autoFocus
             value={descripcion}
             onChange={(e) => setDescripcion(e.target.value)}
             placeholder="Alquiler, Netflix, luz…"
             maxLength={200}
-            className="h-11 w-full rounded-xl bg-page px-3 text-sm ring-1 ring-[var(--border-ring)] outline-none focus:ring-2 focus:ring-accent"
+            className="h-12 w-full rounded-xl bg-card-soft px-3.5 text-sm outline-none focus:ring-2 focus:ring-accent"
           />
         </label>
 
-        <div className="mt-3 grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-2 gap-3">
           <label className="block">
-            <span className="mb-1 block text-xs text-ink-2">Monto</span>
-            <input
-              inputMode="decimal"
-              value={monto}
-              onChange={(e) => setMonto(e.target.value.replace(/[^\d.]/g, ""))}
-              placeholder="0.00"
-              className="h-11 w-full rounded-xl bg-page px-3 text-sm tabular-nums ring-1 ring-[var(--border-ring)] outline-none focus:ring-2 focus:ring-accent"
-            />
+            <span className="mb-1.5 block text-sm font-medium">Monto</span>
+            <div className="flex items-center gap-2 rounded-xl bg-card-soft px-3.5 focus-within:ring-2 focus-within:ring-accent">
+              <span className="text-ink-3">$</span>
+              <input
+                inputMode="decimal"
+                value={monto}
+                onChange={(e) => setMonto(e.target.value.replace(/[^\d.]/g, ""))}
+                placeholder="0.00"
+                className="h-12 min-w-0 flex-1 bg-transparent text-sm outline-none tnum"
+              />
+            </div>
           </label>
           <label className="block">
-            <span className="mb-1 block text-xs text-ink-2">Día del mes</span>
+            <span className="mb-1.5 block text-sm font-medium">Día del mes</span>
             <input
               inputMode="numeric"
               value={dia}
               onChange={(e) => setDia(e.target.value.replace(/\D/g, "").slice(0, 2))}
-              className="h-11 w-full rounded-xl bg-page px-3 text-sm tabular-nums ring-1 ring-[var(--border-ring)] outline-none focus:ring-2 focus:ring-accent"
+              className="h-12 w-full rounded-xl bg-card-soft px-3.5 text-sm outline-none focus:ring-2 focus:ring-accent tnum"
             />
           </label>
         </div>
 
-        <div className="mt-3 grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-2 gap-3">
           <label className="block">
-            <span className="mb-1 block text-xs text-ink-2">Categoría</span>
+            <span className="mb-1.5 block text-sm font-medium">Categoría</span>
             <select
               value={categoria}
               onChange={(e) => setCategoria(e.target.value)}
-              className="h-11 w-full rounded-xl bg-page px-3 text-sm ring-1 ring-[var(--border-ring)] outline-none focus:ring-2 focus:ring-accent"
+              className="h-12 w-full rounded-xl bg-card-soft px-3 text-sm outline-none focus:ring-2 focus:ring-accent"
             >
               {(categorias ?? [])
                 .filter((c) => c.nombre !== "Transferencia")
@@ -192,11 +277,11 @@ function FormRecurrente({ onCerrar }: { onCerrar: () => void }) {
             </select>
           </label>
           <label className="block">
-            <span className="mb-1 block text-xs text-ink-2">Frecuencia</span>
+            <span className="mb-1.5 block text-sm font-medium">Frecuencia</span>
             <select
               value={frecuencia}
               onChange={(e) => setFrecuencia(e.target.value)}
-              className="h-11 w-full rounded-xl bg-page px-3 text-sm ring-1 ring-[var(--border-ring)] outline-none focus:ring-2 focus:ring-accent"
+              className="h-12 w-full rounded-xl bg-card-soft px-3 text-sm outline-none focus:ring-2 focus:ring-accent"
             >
               {FRECUENCIAS.map((f) => (
                 <option key={f.valor} value={f.valor}>
@@ -207,12 +292,12 @@ function FormRecurrente({ onCerrar }: { onCerrar: () => void }) {
           </label>
         </div>
 
-        <label className="mt-3 block">
-          <span className="mb-1 block text-xs text-ink-2">Cuenta (opcional)</span>
+        <label className="block">
+          <span className="mb-1.5 block text-sm font-medium">Cuenta (opcional)</span>
           <select
             value={cuentaId}
             onChange={(e) => setCuentaId(e.target.value)}
-            className="h-11 w-full rounded-xl bg-page px-3 text-sm ring-1 ring-[var(--border-ring)] outline-none focus:ring-2 focus:ring-accent"
+            className="h-12 w-full rounded-xl bg-card-soft px-3 text-sm outline-none focus:ring-2 focus:ring-accent"
           >
             <option value="">Sin especificar</option>
             {(cuentas ?? []).map((c) => (
@@ -224,12 +309,12 @@ function FormRecurrente({ onCerrar }: { onCerrar: () => void }) {
         </label>
 
         {crear.isError && (
-          <p role="alert" className="mt-3 text-sm text-critical">
-            No se pudo crear el pago recurrente.
+          <p role="alert" className="text-sm font-medium text-bad-ink">
+            No se pudo crear el recurrente.
           </p>
         )}
 
-        <div className="mt-5 flex gap-3">
+        <div className="flex gap-3 pt-1">
           <Boton type="button" variante="secundario" className="flex-1" onClick={onCerrar}>
             Cancelar
           </Boton>
@@ -238,6 +323,6 @@ function FormRecurrente({ onCerrar }: { onCerrar: () => void }) {
           </Boton>
         </div>
       </form>
-    </div>
+    </Hoja>
   );
 }

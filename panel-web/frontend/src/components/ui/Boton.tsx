@@ -11,11 +11,11 @@ export function Boton({ children, variante = "primario", className, ...props }: 
   return (
     <button
       className={cn(
-        "inline-flex touch-44 items-center justify-center gap-2 rounded-xl px-4 text-sm font-medium",
-        "transition-opacity disabled:opacity-50",
-        variante === "primario" && "bg-accent text-white hover:opacity-90",
+        "inline-flex h-11 items-center justify-center gap-2 rounded-xl px-4 text-sm font-semibold",
+        "transition-colors disabled:opacity-50",
+        variante === "primario" && "bg-accent text-white hover:bg-accent-hover",
         variante === "secundario" &&
-          "bg-card text-ink ring-1 ring-[var(--border-ring)] hover:opacity-90",
+          "bg-card text-ink shadow-sm ring-1 ring-[var(--ring)] hover:bg-card-soft",
         variante === "fantasma" && "text-ink-2 hover:text-ink",
         className,
       )}
