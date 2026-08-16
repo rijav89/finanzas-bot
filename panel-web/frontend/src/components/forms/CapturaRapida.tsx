@@ -8,8 +8,10 @@ import { cn } from "@/lib/cn";
 import { useUiStore, type TipoMovimiento } from "@/stores/uiStore";
 
 /** Captura conversacional "Mad Libs" para gastos e ingresos.
- *  El monto es el protagonista; el resto de la frase se completa con slots
- *  que se leen como palabras subrayadas, no como cajas de formulario. */
+ *
+ *  Layout: bottom sheet en móvil / diálogo centrado en desktop, con cabecera y
+ *  acciones fijas y cuerpo scrolleable — así el teclado virtual nunca tapa el
+ *  monto ni el botón de confirmar. */
 export function CapturaRapida() {
   const tipoInicial = useUiStore((s) => s.captura);
   const cerrar = useUiStore((s) => s.cerrarCaptura);
@@ -45,12 +47,17 @@ export function CapturaRapida() {
     }
   }, [cuentas, cuentaId]);
 
-  // Cerrar con Escape
+  // Escape cierra; bloquear scroll del fondo mientras está abierto
   useEffect(() => {
     if (!abierto) return;
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && cerrar();
     document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
+    const overflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      document.body.style.overflow = overflow;
+    };
   }, [abierto, cerrar]);
 
   const categorias = tipo === "gasto" ? CATEGORIAS : CATEGORIAS_INGRESO;
@@ -69,6 +76,8 @@ export function CapturaRapida() {
     montoRef.current?.focus();
   }
 
+  const esGasto = tipo === "gasto";
+
   return (
     <div
       className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 sm:items-center sm:p-4"
@@ -76,7 +85,7 @@ export function CapturaRapida() {
     >
       <form
         role="dialog"
-        aria-label={tipo === "gasto" ? "Registrar gasto" : "Registrar ingreso"}
+        aria-label={esGasto ? "Registrar gasto" : "Registrar ingreso"}
         onClick={(e) => e.stopPropagation()}
         onSubmit={(e) => {
           e.preventDefault();
@@ -93,148 +102,156 @@ export function CapturaRapida() {
             { onSuccess: cerrar },
           );
         }}
-        className="w-full max-w-lg rounded-t-3xl bg-card p-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))] shadow-2xl ring-1 ring-[var(--border-ring)] sm:rounded-3xl sm:p-6 sm:pb-6"
+        className="flex max-h-[94dvh] w-full max-w-lg flex-col rounded-t-2xl bg-card shadow-2xl ring-1 ring-[var(--border-ring)] sm:max-h-[88dvh] sm:rounded-2xl"
       >
-        {/* Tipo — el color hace evidente la dirección del dinero de un vistazo */}
-        <div
-          role="tablist"
-          aria-label="Tipo de movimiento"
-          className="mx-auto flex w-full max-w-xs rounded-xl bg-page p-1"
-        >
-          {(
-            [
-              { valor: "gasto", etiqueta: "Gasto", Icono: ArrowUpRight },
-              { valor: "ingreso", etiqueta: "Ingreso", Icono: ArrowDownLeft },
-            ] as const
-          ).map(({ valor, etiqueta, Icono }) => {
-            const activo = tipo === valor;
-            return (
-              <button
-                key={valor}
-                type="button"
-                role="tab"
-                aria-selected={activo}
-                onClick={() => cambiarTipo(valor)}
-                className={cn(
-                  "flex h-10 flex-1 items-center justify-center gap-1.5 rounded-lg text-sm font-semibold transition-colors",
-                  !activo && "text-ink-3 hover:text-ink-2",
-                  activo && valor === "gasto" && "bg-critical/15 text-critical",
-                  activo && valor === "ingreso" && "bg-good/15 text-good-text",
-                )}
-              >
-                <Icono size={16} aria-hidden />
-                {etiqueta}
-              </button>
-            );
-          })}
-        </div>
-
-        {/* Monto protagonista, teñido según el tipo */}
-        <div className="mt-6 flex items-baseline justify-center gap-1.5">
-          <span
-            className={cn(
-              "text-2xl",
-              tipo === "gasto" ? "text-critical/70" : "text-good-text/70",
-            )}
-          >
-            {tipo === "gasto" ? "−" : "+"} S/
-          </span>
-          <input
-            ref={montoRef}
-            autoFocus
-            inputMode="decimal"
-            value={monto}
-            onChange={(e) => setMonto(e.target.value.replace(",", ".").replace(/[^\d.]/g, ""))}
-            placeholder="0.00"
-            aria-label="Monto"
-            className={cn(
-              "w-40 bg-transparent text-center text-5xl font-semibold tracking-tight outline-none placeholder:text-ink-3/40",
-              tipo === "gasto" ? "text-critical" : "text-good-text",
-            )}
+        {/* ── Cabecera fija: tipo + monto ── */}
+        <div className="shrink-0 px-4 pt-3 sm:px-6 sm:pt-5">
+          {/* Asa del bottom sheet (solo móvil) */}
+          <div
+            aria-hidden
+            className="mx-auto mb-3 h-1 w-9 rounded-full bg-ink-3/30 sm:hidden"
           />
-        </div>
 
-        {/* Frase Mad Libs */}
-        <p className="mt-5 text-center text-[17px] leading-[2.9rem] text-ink-2">
-          {tipo === "gasto" ? "Gasté en " : "Recibí de "}
-          <Slot>
-            <Select
-              valor={categoria}
-              onChange={setCategoria}
-              opciones={categorias}
-              aria-label="Categoría"
-            />
-          </Slot>{" "}
-          {tipo === "gasto" ? "pagando con " : "en "}
-          <Slot>
-            <Select
-              valor={String(cuentaId ?? "")}
-              onChange={(v) => setCuentaId(Number(v))}
-              opciones={cuentasOpts}
-              aria-label="Cuenta"
-            />
-          </Slot>{" "}
-          el{" "}
-          <Slot>
-            <input
-              type="date"
-              value={fecha}
-              max={hoyISO()}
-              onChange={(e) => e.target.value && setFecha(e.target.value)}
-              aria-label="Fecha"
-              className="bg-transparent text-[15px] font-medium text-ink outline-none [color-scheme:inherit]"
-            />
-          </Slot>
-        </p>
+          <div
+            role="tablist"
+            aria-label="Tipo de movimiento"
+            className="mx-auto flex w-full max-w-[17rem] rounded-lg bg-page p-1"
+          >
+            {(
+              [
+                { valor: "gasto", etiqueta: "Gasto", Icono: ArrowUpRight },
+                { valor: "ingreso", etiqueta: "Ingreso", Icono: ArrowDownLeft },
+              ] as const
+            ).map(({ valor, etiqueta, Icono }) => {
+              const activo = tipo === valor;
+              return (
+                <button
+                  key={valor}
+                  type="button"
+                  role="tab"
+                  aria-selected={activo}
+                  onClick={() => cambiarTipo(valor)}
+                  className={cn(
+                    "flex h-9 flex-1 items-center justify-center gap-1.5 rounded-md text-sm font-semibold transition-colors",
+                    !activo && "text-ink-3",
+                    activo && valor === "gasto" && "bg-critical/15 text-critical",
+                    activo && valor === "ingreso" && "bg-good/15 text-good-text",
+                  )}
+                >
+                  <Icono size={15} aria-hidden />
+                  {etiqueta}
+                </button>
+              );
+            })}
+          </div>
 
-        {/* Atajos de fecha */}
-        <div className="mt-2 flex justify-center gap-2">
-          {[
-            { etiqueta: "Hoy", valor: hoyISO() },
-            { etiqueta: "Ayer", valor: desplazarDias(-1) },
-            { etiqueta: "Anteayer", valor: desplazarDias(-2) },
-          ].map((d) => (
-            <button
-              key={d.etiqueta}
-              type="button"
-              onClick={() => setFecha(d.valor)}
+          {/* Monto protagonista, teñido según el tipo */}
+          <div className="mt-4 flex items-baseline justify-center gap-1 sm:mt-5">
+            <span
               className={cn(
-                "h-9 rounded-lg px-3 text-xs font-medium transition-colors",
-                fecha === d.valor
-                  ? "bg-accent/15 text-accent"
-                  : "text-ink-3 hover:bg-page hover:text-ink-2",
+                "text-xl sm:text-2xl",
+                esGasto ? "text-critical/70" : "text-good-text/70",
               )}
             >
-              {d.etiqueta}
-            </button>
-          ))}
+              {esGasto ? "−" : "+"} S/
+            </span>
+            <input
+              ref={montoRef}
+              autoFocus
+              inputMode="decimal"
+              value={monto}
+              onChange={(e) => setMonto(e.target.value.replace(",", ".").replace(/[^\d.]/g, ""))}
+              placeholder="0.00"
+              aria-label="Monto"
+              className={cn(
+                "w-36 bg-transparent text-center text-[2.5rem] font-semibold leading-none tracking-tight outline-none placeholder:text-ink-3/40 sm:w-40 sm:text-5xl",
+                esGasto ? "text-critical" : "text-good-text",
+              )}
+            />
+          </div>
         </div>
 
-        <input
-          value={nota}
-          onChange={(e) => setNota(e.target.value)}
-          placeholder={tipo === "gasto" ? "¿En qué? (opcional)" : "¿De quién? (opcional)"}
-          maxLength={300}
-          className="mt-5 h-11 w-full rounded-xl bg-page px-3.5 text-sm text-ink ring-1 ring-[var(--border-ring)] outline-none focus:ring-2 focus:ring-accent"
-        />
-
-        {crear.isError && (
-          <p role="alert" className="mt-3 text-center text-sm text-critical">
-            No se pudo registrar. Intenta de nuevo.
+        {/* ── Cuerpo scrolleable ── */}
+        <div className="min-h-0 flex-1 overflow-y-auto px-4 pt-4 sm:px-6 sm:pt-5">
+          <p className="text-center text-[15px] leading-[2.6rem] text-ink-2 sm:text-[17px] sm:leading-[2.9rem]">
+            {esGasto ? "Gasté en " : "Recibí de "}
+            <Slot>
+              <Select
+                valor={categoria}
+                onChange={setCategoria}
+                opciones={categorias}
+                aria-label="Categoría"
+              />
+            </Slot>{" "}
+            {esGasto ? "pagando con " : "en "}
+            <Slot>
+              <Select
+                valor={String(cuentaId ?? "")}
+                onChange={(v) => setCuentaId(Number(v))}
+                opciones={cuentasOpts}
+                aria-label="Cuenta"
+              />
+            </Slot>{" "}
+            el{" "}
+            <Slot>
+              <input
+                type="date"
+                value={fecha}
+                max={hoyISO()}
+                onChange={(e) => e.target.value && setFecha(e.target.value)}
+                aria-label="Fecha"
+                className="bg-transparent text-sm font-medium text-ink outline-none [color-scheme:inherit] sm:text-[15px]"
+              />
+            </Slot>
           </p>
-        )}
 
-        <div className="mt-5 flex gap-3">
-          <Boton type="button" variante="secundario" className="flex-1" onClick={cerrar}>
-            Cancelar
-          </Boton>
-          <Boton type="submit" className="flex-[2]" disabled={!montoValido || crear.isPending}>
-            {crear.isPending
-              ? "Guardando…"
-              : tipo === "gasto"
-                ? "Registrar gasto"
-                : "Registrar ingreso"}
-          </Boton>
+          <div className="mt-1 flex justify-center gap-1.5">
+            {[
+              { etiqueta: "Hoy", valor: hoyISO() },
+              { etiqueta: "Ayer", valor: desplazarDias(-1) },
+              { etiqueta: "Anteayer", valor: desplazarDias(-2) },
+            ].map((d) => (
+              <button
+                key={d.etiqueta}
+                type="button"
+                onClick={() => setFecha(d.valor)}
+                className={cn(
+                  "h-8 rounded-lg px-2.5 text-xs font-medium transition-colors",
+                  fecha === d.valor
+                    ? "bg-accent/15 text-accent"
+                    : "text-ink-3 hover:bg-page hover:text-ink-2",
+                )}
+              >
+                {d.etiqueta}
+              </button>
+            ))}
+          </div>
+
+          <input
+            value={nota}
+            onChange={(e) => setNota(e.target.value)}
+            placeholder={esGasto ? "¿En qué? (opcional)" : "¿De quién? (opcional)"}
+            maxLength={300}
+            className="mt-4 h-11 w-full rounded-xl bg-page px-3.5 text-sm text-ink ring-1 ring-[var(--border-ring)] outline-none focus:ring-2 focus:ring-accent"
+          />
+
+          {crear.isError && (
+            <p role="alert" className="mt-3 text-center text-sm text-critical">
+              No se pudo registrar. Intenta de nuevo.
+            </p>
+          )}
+        </div>
+
+        {/* ── Acciones fijas: siempre visibles sobre el teclado ── */}
+        <div className="shrink-0 border-t border-hairline px-4 py-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] sm:px-6 sm:py-4 sm:pb-4">
+          <div className="flex gap-3">
+            <Boton type="button" variante="secundario" className="flex-1" onClick={cerrar}>
+              Cancelar
+            </Boton>
+            <Boton type="submit" className="flex-[2]" disabled={!montoValido || crear.isPending}>
+              {crear.isPending ? "Guardando…" : esGasto ? "Registrar gasto" : "Registrar ingreso"}
+            </Boton>
+          </div>
         </div>
       </form>
     </div>
@@ -267,7 +284,7 @@ function Select({
         {...props}
         value={valor}
         onChange={(e) => onChange(e.target.value)}
-        className="appearance-none bg-transparent text-[15px] font-medium text-ink outline-none"
+        className="appearance-none bg-transparent text-sm font-medium text-ink outline-none sm:text-[15px]"
       >
         {items.map((o) => (
           <option key={o.valor} value={o.valor}>

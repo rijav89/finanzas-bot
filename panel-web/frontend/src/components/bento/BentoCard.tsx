@@ -36,13 +36,13 @@ export function BentoCard({
       ref={setNodeRef}
       style={{ transform: CSS.Translate.toString(transform), transition }}
       className={cn(
-        "rounded-2xl bg-card p-4 ring-1 ring-[var(--border-ring)] sm:p-5",
+        "rounded-2xl bg-card p-3.5 ring-1 ring-[var(--border-ring)] sm:p-5",
         isDragging && "z-10 opacity-80 shadow-xl",
         className,
       )}
     >
       <header className="flex items-center gap-2">
-        <h2 className="text-sm font-medium text-ink-2">{titulo}</h2>
+        <h2 className="text-[13px] font-medium text-ink-2 sm:text-sm">{titulo}</h2>
         {desglose && (
           <button
             onClick={() => setAbierto((v) => !v)}
@@ -70,10 +70,10 @@ export function BentoCard({
         )}
       </header>
 
-      <div className="mt-3">{children}</div>
+      <div className="mt-2 sm:mt-3">{children}</div>
 
       {desglose && abierto && (
-        <div className="mt-4 border-t border-hairline pt-4">{desglose}</div>
+        <div className="mt-3 border-t border-hairline pt-3 sm:mt-4 sm:pt-4">{desglose}</div>
       )}
     </section>
   );

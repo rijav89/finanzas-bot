@@ -62,13 +62,13 @@ export function AppShell({ children }: { children: ReactNode }) {
 
       {/* Contenido */}
       <div className="flex-1 pb-24 lg:pb-0">
-        {/* Header móvil */}
-        <header className="flex items-center gap-2 p-4 lg:hidden">
-          <span className="text-lg font-semibold">FinanzasBot</span>
+        {/* Header móvil — compacto para dejar el alto a los datos */}
+        <header className="flex items-center gap-2 px-4 py-2.5 lg:hidden">
+          <span className="text-base font-semibold">FinanzasBot</span>
           <button
             aria-label="Buscar"
             onClick={() => setPaleta(true)}
-            className="ml-auto touch-44 rounded-xl bg-card px-3 ring-1 ring-[var(--border-ring)]"
+            className="ml-auto flex size-10 items-center justify-center rounded-xl bg-card ring-1 ring-[var(--border-ring)]"
           >
             <Search size={18} className="text-ink-2" />
           </button>

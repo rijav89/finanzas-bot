@@ -47,7 +47,7 @@ function SaldoTotal({ datos, className }: WidgetProps) {
         </ul>
       }
     >
-      <p className="text-3xl font-semibold tracking-tight">{money(saldo)}</p>
+      <p className="text-[1.75rem] font-semibold leading-tight tracking-tight sm:text-3xl">{money(saldo)}</p>
       <div className="mt-2">
         {saldo < 0 ? (
           <Semaforo estado="critical" etiqueta="Saldo negativo" />
@@ -95,7 +95,7 @@ function GastoMes({ datos, className }: WidgetProps) {
         </dl>
       }
     >
-      <p className="text-3xl font-semibold tracking-tight">{money(gastos)}</p>
+      <p className="text-[1.75rem] font-semibold leading-tight tracking-tight sm:text-3xl">{money(gastos)}</p>
       <div className="mt-2">
         {ratio === null ? (
           <Semaforo estado="info" etiqueta="Sin ingresos este mes" />
