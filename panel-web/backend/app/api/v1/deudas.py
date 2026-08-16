@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.deps import UsuarioActual, get_current_user, get_db, require_csrf
+from app.core.deps import UsuarioActual, get_current_user, get_db, get_db_lectura, require_csrf
 from app.models import CuotaDeuda, Deuda, Transaccion
 from app.schemas.common import ok
 from app.schemas.modulos import DeudaCrear, DeudaEditar, PagarCuota
@@ -78,7 +78,7 @@ async def _resumen(db: AsyncSession, deuda: Deuda) -> dict:
 
 @router.get("")
 async def listar(
-    user: UsuarioActual = Depends(get_current_user), db: AsyncSession = Depends(get_db)
+    user: UsuarioActual = Depends(get_current_user), db: AsyncSession = Depends(get_db_lectura)
 ):
     deudas = (
         await db.scalars(
@@ -110,7 +110,7 @@ async def listar(
 async def detalle(
     deuda_id: int,
     user: UsuarioActual = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_db_lectura),
 ):
     deuda = await _propia(db, user.usuario_id, deuda_id)
     cuotas = (

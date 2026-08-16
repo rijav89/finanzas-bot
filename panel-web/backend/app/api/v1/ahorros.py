@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.deps import UsuarioActual, get_current_user, get_db, require_csrf
+from app.core.deps import UsuarioActual, get_current_user, get_db, get_db_lectura, require_csrf
 from app.models import Cuenta, MetaAhorro
 from app.schemas.common import ok
 from app.schemas.modulos import MetaAhorroUpsert
@@ -26,7 +26,7 @@ _SALDOS_AHORRO_SQL = text("""
 
 @router.get("")
 async def listar(
-    user: UsuarioActual = Depends(get_current_user), db: AsyncSession = Depends(get_db)
+    user: UsuarioActual = Depends(get_current_user), db: AsyncSession = Depends(get_db_lectura)
 ):
     saldos = (await db.execute(_SALDOS_AHORRO_SQL, {"uid": user.usuario_id})).all()
     metas = {

@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import literal, select, union_all
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.deps import UsuarioActual, get_current_user, get_db, require_csrf
+from app.core.deps import UsuarioActual, get_current_user, get_db, get_db_lectura, require_csrf
 from app.models import Ingreso, Transaccion
 from app.schemas.common import ok
 from app.schemas.movimientos import (
@@ -24,7 +24,7 @@ _MODELOS = {"gasto": Transaccion, "ingreso": Ingreso}
 @router.get("/movimientos")
 async def listar(
     user: UsuarioActual = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_db_lectura),
     tipo: Literal["gasto", "ingreso"] | None = None,
     desde: datetime | None = None,
     hasta: datetime | None = None,

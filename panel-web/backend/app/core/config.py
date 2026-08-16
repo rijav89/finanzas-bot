@@ -23,6 +23,9 @@ class Settings(BaseSettings):
 
     entorno: str = "dev"
     cookie_secure: bool = True
+    # Se enciende junto con la migración 004 (F6). Mientras esté apagado se evita
+    # el roundtrip del SET LOCAL en cada request.
+    rls_activo: bool = False
 
 
 @lru_cache

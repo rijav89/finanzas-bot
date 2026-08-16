@@ -1,4 +1,4 @@
-"""Dependencias FastAPI: usuario actual, sesión de BD con RLS y guard CSRF."""
+"""Dependencias FastAPI: usuario actual, sesiones de BD y guard CSRF."""
 import uuid
 from dataclasses import dataclass
 from typing import AsyncIterator
@@ -7,13 +7,14 @@ from fastapi import Depends, HTTPException, Request
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import get_settings
 from app.core.security import (
     COOKIE_ACCESS,
     decode_supabase_jwt,
     vinculo_cache_get,
     vinculo_cache_set,
 )
-from app.db.session import async_session
+from app.db.session import async_session, async_session_lectura
 from app.models import VinculoAuth
 
 
@@ -44,7 +45,8 @@ async def get_current_user(request: Request) -> UsuarioActual:
             auth_uuid = uuid.UUID(auth_uid)
         except ValueError:
             raise HTTPException(status_code=401, detail="token_invalido")
-        async with async_session() as session:
+        # Lectura sin transacción: evita BEGIN/ROLLBACK en el camino caliente
+        async with async_session_lectura() as session:
             fila = await session.scalar(
                 select(VinculoAuth.usuario_id).where(VinculoAuth.auth_uid == auth_uuid)
             )
@@ -56,23 +58,44 @@ async def get_current_user(request: Request) -> UsuarioActual:
     return UsuarioActual(auth_uid=auth_uid, usuario_id=usuario_id, email=claims.get("email"))
 
 
+async def _fijar_guc_rls(session: AsyncSession, usuario_id: int) -> None:
+    """Alimenta las políticas RLS (migración 004, F6) con el usuario del request.
+
+    Cuesta un roundtrip, así que solo se ejecuta cuando RLS está realmente activo.
+    Hasta entonces el aislamiento lo garantiza el filtro `usuario_id` de cada query,
+    cubierto por los tests anti-IDOR.
+    """
+    if get_settings().rls_activo and session.bind.dialect.name == "postgresql":
+        await session.execute(
+            text("SELECT set_config('app.usuario_id', :uid, true)"), {"uid": str(usuario_id)}
+        )
+
+
 async def get_db(
     user: UsuarioActual = Depends(get_current_user),
 ) -> AsyncIterator[AsyncSession]:
-    """Sesión con transacción abierta y GUC app.usuario_id seteado (SET LOCAL).
-
-    El GUC alimenta las políticas RLS (migración 004, F6). set_config(..., true)
-    es local a la transacción → compatible con el pooler de Supabase.
-    El commit es automático al salir sin excepción.
-    """
+    """Sesión transaccional para MUTACIONES. Commit automático al salir sin excepción."""
     async with async_session() as session:
         async with session.begin():
-            if session.bind.dialect.name == "postgresql":
-                await session.execute(
-                    text("SELECT set_config('app.usuario_id', :uid, true)"),
-                    {"uid": str(user.usuario_id)},
-                )
+            await _fijar_guc_rls(session, user.usuario_id)
             yield session
+
+
+async def get_db_lectura(
+    user: UsuarioActual = Depends(get_current_user),
+) -> AsyncIterator[AsyncSession]:
+    """Sesión en AUTOCOMMIT para LECTURAS: sin BEGIN/ROLLBACK (~270 ms menos por request).
+
+    Con RLS activo se usa transacción, porque `SET LOCAL` necesita uno.
+    """
+    if get_settings().rls_activo:
+        async with async_session() as session:
+            async with session.begin():
+                await _fijar_guc_rls(session, user.usuario_id)
+                yield session
+        return
+    async with async_session_lectura() as session:
+        yield session
 
 
 async def get_auth_claims(request: Request) -> dict:
@@ -87,12 +110,17 @@ async def get_auth_claims(request: Request) -> dict:
 
 
 async def get_db_basico() -> AsyncIterator[AsyncSession]:
-    """Sesión transaccional SIN GUC de usuario — solo para el flujo de vinculación,
-    donde aún no existe usuario_id. Las políticas RLS de la migración 004 deben
-    contemplar este camino para vinculos_auth/codigos_vinculacion."""
+    """Sesión transaccional SIN usuario resuelto — solo para el flujo de vinculación."""
     async with async_session() as session:
         async with session.begin():
             yield session
+
+
+async def get_db_lectura_libre() -> AsyncIterator[AsyncSession]:
+    """Lectura sin usuario resuelto (AUTOCOMMIT) — para /auth/me, que corre antes
+    de que exista el vínculo."""
+    async with async_session_lectura() as session:
+        yield session
 
 
 async def require_csrf(request: Request) -> None:

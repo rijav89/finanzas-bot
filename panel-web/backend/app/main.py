@@ -1,4 +1,6 @@
-from contextlib import asynccontextmanager
+import asyncio
+import logging
+from contextlib import asynccontextmanager, suppress
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
@@ -18,13 +20,33 @@ from app.api.v1 import (
     presupuestos,
     recurrentes,
 )
-from app.db.session import engine
+from app.db.session import engine, engine_lectura
 from app.schemas.common import err
+
+log = logging.getLogger("panel-api")
+
+# Abrir una conexión nueva a Supabase cuesta ~2.5 s (TLS + auth a ~160 ms de RTT).
+# Este latido mantiene el pool caliente para que ningún request pague ese precio.
+INTERVALO_KEEPALIVE = 240  # 4 min, muy por debajo del recycle de 25 min
+
+
+async def _keepalive() -> None:
+    while True:
+        try:
+            async with engine_lectura.connect() as conn:
+                await conn.execute(text("SELECT 1"))
+        except Exception as e:  # la BD puede estar pausada; se reintenta al siguiente ciclo
+            log.warning("keepalive falló: %s", type(e).__name__)
+        await asyncio.sleep(INTERVALO_KEEPALIVE)
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    tarea = asyncio.create_task(_keepalive())
     yield
+    tarea.cancel()
+    with suppress(asyncio.CancelledError):
+        await tarea
     await engine.dispose()
 
 
@@ -75,7 +97,7 @@ async def db_exc_handler(request: Request, exc: OperationalError):
 @app.get("/api/v1/health")
 async def health():
     try:
-        async with engine.connect() as conn:
+        async with engine_lectura.connect() as conn:
             await conn.execute(text("SELECT 1"))
     except Exception:
         return JSONResponse(status_code=503, content=err("db_unavailable"))

@@ -4,7 +4,12 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.deps import get_auth_claims, get_db_basico, require_csrf
+from app.core.deps import (
+    get_auth_claims,
+    get_db_basico,
+    get_db_lectura_libre,
+    require_csrf,
+)
 from app.core.security import (
     COOKIE_ACCESS,
     COOKIE_REFRESH,
@@ -68,7 +73,7 @@ async def vincular(
 
 @router.get("/me")
 async def me(
-    claims: dict = Depends(get_auth_claims), db: AsyncSession = Depends(get_db_basico)
+    claims: dict = Depends(get_auth_claims), db: AsyncSession = Depends(get_db_lectura_libre)
 ):
     usuario_id = await db.scalar(
         select(VinculoAuth.usuario_id).where(

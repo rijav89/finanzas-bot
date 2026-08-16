@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.deps import UsuarioActual, get_current_user, get_db, require_csrf
+from app.core.deps import UsuarioActual, get_current_user, get_db, get_db_lectura, require_csrf
 from app.models import Meta, PerfilFinanciero
 from app.schemas.common import ok
 from app.schemas.modulos import MetaCrear, MetaEditar, PerfilUpsert
@@ -29,7 +29,7 @@ def _serializar_perfil(p: PerfilFinanciero | None) -> dict | None:
 
 @router.get("/perfil")
 async def ver_perfil(
-    user: UsuarioActual = Depends(get_current_user), db: AsyncSession = Depends(get_db)
+    user: UsuarioActual = Depends(get_current_user), db: AsyncSession = Depends(get_db_lectura)
 ):
     perfil = await db.scalar(
         select(PerfilFinanciero).where(PerfilFinanciero.usuario_id == user.usuario_id)
@@ -72,7 +72,7 @@ def _serializar_meta(m: Meta) -> dict:
 
 @router.get("/metas")
 async def listar_metas(
-    user: UsuarioActual = Depends(get_current_user), db: AsyncSession = Depends(get_db)
+    user: UsuarioActual = Depends(get_current_user), db: AsyncSession = Depends(get_db_lectura)
 ):
     filas = (
         await db.scalars(

@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy import delete, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.deps import UsuarioActual, get_current_user, get_db, require_csrf
+from app.core.deps import UsuarioActual, get_current_user, get_db, get_db_lectura, require_csrf
 from app.models import Presupuesto
 from app.schemas.common import ok
 from app.schemas.modulos import PresupuestosUpsert
@@ -45,7 +45,7 @@ def _semaforo(gastado: float, limite: float) -> str:
 @router.get("")
 async def listar(
     user: UsuarioActual = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_db_lectura),
     anio: int | None = Query(default=None, ge=2020, le=2100),
     mes: int | None = Query(default=None, ge=1, le=12),
 ):

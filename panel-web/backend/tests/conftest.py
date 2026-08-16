@@ -61,7 +61,10 @@ async def db_engine():
 @pytest_asyncio.fixture
 async def sesiones(db_engine, monkeypatch):
     factory = async_sessionmaker(db_engine, expire_on_commit=False)
+    # En producción la de lectura va en AUTOCOMMIT sobre el mismo pool; en SQLite
+    # basta con la misma factory (lo que se prueba es la lógica, no el aislamiento).
     monkeypatch.setattr(deps_mod, "async_session", factory)
+    monkeypatch.setattr(deps_mod, "async_session_lectura", factory)
     vinculo_cache_clear()
     return factory
 

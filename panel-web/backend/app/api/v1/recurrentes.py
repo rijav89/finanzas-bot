@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.deps import UsuarioActual, get_current_user, get_db, require_csrf
+from app.core.deps import UsuarioActual, get_current_user, get_db, get_db_lectura, require_csrf
 from app.models import PagoFijo
 from app.schemas.common import ok
 from app.schemas.modulos import RecurrenteCrear, RecurrenteEditar
@@ -52,7 +52,7 @@ def _serializar(p: PagoFijo) -> dict:
 
 @router.get("")
 async def listar(
-    user: UsuarioActual = Depends(get_current_user), db: AsyncSession = Depends(get_db)
+    user: UsuarioActual = Depends(get_current_user), db: AsyncSession = Depends(get_db_lectura)
 ):
     filas = (
         await db.scalars(
