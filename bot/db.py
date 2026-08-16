@@ -466,3 +466,55 @@ def obtener_pagos_fijos_del_dia(dia: int) -> list:
             )
             rows = cur.fetchall()
             return rows
+
+
+# ── Vinculación con el panel web ─────────────────────────────────────────────
+
+def crear_codigo_vinculacion(usuario_id: int, ttl_minutos: int = 10) -> str:
+    """Genera un código de un solo uso para vincular la cuenta web.
+
+    En BD solo queda el SHA-256; el código en claro se muestra una vez por chat.
+    Invalida los códigos previos del usuario que sigan vigentes.
+    """
+    import hashlib
+    import secrets
+
+    alfabeto = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"  # sin caracteres ambiguos
+    codigo = "".join(secrets.choice(alfabeto) for _ in range(8))
+    codigo_hash = hashlib.sha256(codigo.encode()).hexdigest()
+
+    with db_pool.connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "UPDATE codigos_vinculacion SET usado=TRUE "
+                "WHERE usuario_id=%s AND usado=FALSE AND expira_en > NOW()",
+                (usuario_id,),
+            )
+            cur.execute(
+                "INSERT INTO codigos_vinculacion (usuario_id, codigo_hash, expira_en) "
+                "VALUES (%s, %s, NOW() + make_interval(mins => %s))",
+                (usuario_id, codigo_hash, ttl_minutos),
+            )
+            conn.commit()
+    return codigo
+
+
+def obtener_vinculo_web(usuario_id: int):
+    """Devuelve (auth_uid, creado_en) si la cuenta ya está vinculada, o None."""
+    with db_pool.connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT auth_uid, creado_en FROM vinculos_auth WHERE usuario_id=%s",
+                (usuario_id,),
+            )
+            return cur.fetchone()
+
+
+def desvincular_web(usuario_id: int) -> bool:
+    """Elimina el vínculo con la cuenta web. True si había uno."""
+    with db_pool.connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute("DELETE FROM vinculos_auth WHERE usuario_id=%s", (usuario_id,))
+            borrados = cur.rowcount
+            conn.commit()
+            return borrados > 0

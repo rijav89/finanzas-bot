@@ -55,6 +55,9 @@ from db import (
     crear_cuenta,
     archivar_cuenta,
     registrar_transferencia,
+    crear_codigo_vinculacion,
+    obtener_vinculo_web,
+    desvincular_web,
 )
 from ocr import procesar_voucher
 from categorias import clasificar_gasto
@@ -1307,6 +1310,46 @@ async def nueva_cuenta_saldo_handler(update: Update, context: ContextTypes.DEFAU
 
 # ── Main ─────────────────────────────────────────────────────────────────────
 
+async def cmd_vincular(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Genera un codigo de un solo uso para enlazar la cuenta con el panel web."""
+    usuario_id = obtener_o_crear_usuario(update.message.from_user.id)
+
+    if context.args and context.args[0].lower() in ("quitar", "desvincular"):
+        if desvincular_web(usuario_id):
+            texto = "Tu cuenta web fue desvinculada. Usa /vincular para enlazar otra."
+        else:
+            texto = "No tenias ninguna cuenta web vinculada."
+        await update.message.reply_text(texto, reply_markup=menu_principal())
+        return
+
+    if obtener_vinculo_web(usuario_id) is not None:
+        await update.message.reply_text(
+            "🔗 *Tu cuenta ya está vinculada al panel web*\n\n"
+            "Para enlazar una cuenta distinta, primero usa:\n"
+            "`/vincular quitar`",
+            parse_mode="Markdown",
+            reply_markup=menu_principal(),
+        )
+        return
+
+    codigo = crear_codigo_vinculacion(usuario_id)
+    panel_url = os.environ.get("PANEL_URL", "")
+    linea_url = f"\n🌐 {panel_url}\n" if panel_url else ""
+
+    await update.message.reply_text(
+        "🔗 *Vincular con el panel web*\n"
+        "─────────────────────\n"
+        "Tu código de un solo uso:\n\n"
+        f"`{codigo}`\n\n"
+        "1️⃣ Inicia sesión en el panel\n"
+        "2️⃣ Pega este código cuando te lo pida\n"
+        f"{linea_url}"
+        "\n⏳ Vence en 10 minutos.",
+        parse_mode="Markdown",
+        reply_markup=menu_principal(),
+    )
+
+
 def main():
     app = ApplicationBuilder().token(TOKEN).build()
 
@@ -1365,6 +1408,7 @@ def main():
     app.add_handler(CommandHandler("saldo", cmd_saldo))
     app.add_handler(CommandHandler("pagos", cmd_pagos))
     app.add_handler(CommandHandler("editar", cmd_editar))
+    app.add_handler(CommandHandler("vincular", cmd_vincular))
     app.add_handler(CommandHandler("ayuda", ayuda))
     app.add_handler(CommandHandler("cancelar", cancelar))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_texto_router))
