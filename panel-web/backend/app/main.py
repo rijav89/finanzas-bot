@@ -6,7 +6,18 @@ from fastapi.responses import JSONResponse
 from sqlalchemy import text
 from sqlalchemy.exc import OperationalError
 
-from app.api.v1 import auth, cuentas, dashboard, movimientos
+from app.api.v1 import (
+    ahorros,
+    auth,
+    categorias,
+    cuentas,
+    dashboard,
+    deudas,
+    movimientos,
+    perfil,
+    presupuestos,
+    recurrentes,
+)
 from app.db.session import engine
 from app.schemas.common import err
 
@@ -25,10 +36,19 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-app.include_router(auth.router, prefix="/api/v1")
-app.include_router(cuentas.router, prefix="/api/v1")
-app.include_router(movimientos.router, prefix="/api/v1")
-app.include_router(dashboard.router, prefix="/api/v1")
+for _router in (
+    auth.router,
+    cuentas.router,
+    movimientos.router,
+    dashboard.router,
+    categorias.router,
+    presupuestos.router,
+    deudas.router,
+    ahorros.router,
+    recurrentes.router,
+    perfil.router,
+):
+    app.include_router(_router, prefix="/api/v1")
 
 
 @app.exception_handler(HTTPException)

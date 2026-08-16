@@ -150,43 +150,71 @@ async def crear_ingreso(
     return ok({"id": ingreso.id, "tipo": "ingreso"})
 
 
-@router.patch("/{tipo}/{mov_id}")
-async def editar(
-    tipo: Literal["gastos", "ingresos"],
-    mov_id: int,
-    body: MovimientoEditar,
-    user: UsuarioActual = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-):
-    modelo = Transaccion if tipo == "gastos" else Ingreso
+# Rutas explícitas por tipo: un patrón "/{tipo}/{id}" capturaría también
+# /categorias/5, /metas/3, etc. de los routers que se montan después.
+
+
+async def _propio(db: AsyncSession, modelo, usuario_id: int, mov_id: int):
     fila = await db.scalar(
-        select(modelo).where(modelo.id == mov_id, modelo.usuario_id == user.usuario_id)
+        select(modelo).where(modelo.id == mov_id, modelo.usuario_id == usuario_id)
     )
     if fila is None:
         raise HTTPException(status_code=404, detail="movimiento_no_encontrado")
+    return fila
+
+
+async def _editar(db: AsyncSession, modelo, user: UsuarioActual, mov_id: int, body: MovimientoEditar):
+    fila = await _propio(db, modelo, user.usuario_id, mov_id)
     cambios = body.model_dump(exclude_unset=True)
-    if "cuenta_id" in cambios:
+    if cambios.get("cuenta_id") is not None:
         await cuenta_propia(db, user.usuario_id, cambios["cuenta_id"])
     for campo, valor in cambios.items():
         setattr(fila, campo, valor)
     return ok({"editado": True})
 
 
-@router.delete("/{tipo}/{mov_id}")
-async def eliminar(
-    tipo: Literal["gastos", "ingresos"],
+async def _eliminar(db: AsyncSession, modelo, user: UsuarioActual, mov_id: int):
+    fila = await _propio(db, modelo, user.usuario_id, mov_id)
+    await db.delete(fila)
+    return ok({"eliminado": True})
+
+
+@router.patch("/gastos/{mov_id}")
+async def editar_gasto(
+    mov_id: int,
+    body: MovimientoEditar,
+    user: UsuarioActual = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    return await _editar(db, Transaccion, user, mov_id, body)
+
+
+@router.patch("/ingresos/{mov_id}")
+async def editar_ingreso(
+    mov_id: int,
+    body: MovimientoEditar,
+    user: UsuarioActual = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    return await _editar(db, Ingreso, user, mov_id, body)
+
+
+@router.delete("/gastos/{mov_id}")
+async def eliminar_gasto(
     mov_id: int,
     user: UsuarioActual = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    modelo = Transaccion if tipo == "gastos" else Ingreso
-    fila = await db.scalar(
-        select(modelo).where(modelo.id == mov_id, modelo.usuario_id == user.usuario_id)
-    )
-    if fila is None:
-        raise HTTPException(status_code=404, detail="movimiento_no_encontrado")
-    await db.delete(fila)
-    return ok({"eliminado": True})
+    return await _eliminar(db, Transaccion, user, mov_id)
+
+
+@router.delete("/ingresos/{mov_id}")
+async def eliminar_ingreso(
+    mov_id: int,
+    user: UsuarioActual = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    return await _eliminar(db, Ingreso, user, mov_id)
 
 
 @router.post("/transferencias", status_code=201)
