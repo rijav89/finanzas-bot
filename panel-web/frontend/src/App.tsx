@@ -19,7 +19,19 @@ const Login = lazy(() => import("@/pages/Login"));
 const Vincular = lazy(() => import("@/pages/Vincular"));
 
 const queryClient = new QueryClient({
-  defaultOptions: { queries: { refetchOnWindowFocus: false, retry: 1 } },
+  defaultOptions: {
+    queries: {
+      refetchOnWindowFocus: false,
+      retry: 1,
+      // Cada request cuesta ~180 ms contra Supabase: mantener los datos "frescos"
+      // un rato hace que volver a una sección ya vista sea instantáneo.
+      staleTime: 2 * 60_000,
+      gcTime: 30 * 60_000,
+      // Al cambiar de filtro/mes conserva lo anterior mientras llega lo nuevo,
+      // en vez de parpadear a esqueleto.
+      placeholderData: (previo: unknown) => previo,
+    },
+  },
 });
 
 function Cargando() {

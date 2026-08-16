@@ -13,9 +13,11 @@ import {
   WalletCards,
   X,
 } from "lucide-react";
+import { useQueryClient } from "@tanstack/react-query";
 import { useState, type ReactNode } from "react";
 import { NavLink } from "react-router-dom";
 
+import { prefetchRuta } from "@/api/prefetch";
 import { useLogout, useMe } from "@/api/queries";
 import { cn } from "@/lib/cn";
 import { useUiStore } from "@/stores/uiStore";
@@ -39,6 +41,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   const [masAbierto, setMasAbierto] = useState(false);
   const logout = useLogout();
   const { data: me } = useMe();
+  const qc = useQueryClient();
 
   const iniciales = (me?.email ?? "?").slice(0, 2).toUpperCase();
   const enMas = NAV.filter((n) => ![...TAB_BAR, ...TAB_BAR_DER].includes(n));
@@ -64,6 +67,9 @@ export function AppShell({ children }: { children: ReactNode }) {
               key={to}
               to={to}
               end={to === "/"}
+              // Precarga al pasar el cursor: al soltar el clic los datos ya están
+              onMouseEnter={() => prefetchRuta(qc, to)}
+              onFocus={() => prefetchRuta(qc, to)}
               className={({ isActive }) =>
                 cn(
                   "flex items-center gap-3 rounded-xl px-3 py-2.5 text-[15px] font-medium transition-colors",
@@ -200,10 +206,13 @@ function ItemTab({
   Icono: typeof LayoutGrid;
   etiqueta: string;
 }) {
+  const qc = useQueryClient();
   return (
     <NavLink
       to={to}
       end={to === "/"}
+      // En táctil el prefetch arranca al apoyar el dedo, antes del click
+      onTouchStart={() => prefetchRuta(qc, to)}
       className={({ isActive }) =>
         cn(
           "flex touch-44 flex-col items-center justify-center gap-1 py-2.5 text-[11px] font-medium",
