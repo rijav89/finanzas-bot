@@ -234,7 +234,7 @@ async def handle_texto(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif intencion == "REGISTRAR_INGRESO":
         cuentas = obtener_cuentas(usuario_id)
         nombres_cuentas = [c[1] for c in cuentas]
-        datos = extraer_ingreso(mensaje, nombres_cuentas)
+        datos = extraer_ingreso(mensaje, nombres_cuentas, usuario_id)
         monto = datos.get("monto", 0)
         descripcion = datos.get("descripcion", "Ingreso")
         categoria = datos.get("categoria") or "Otros ingresos"
@@ -303,7 +303,7 @@ async def _procesar_y_guardar_gastos(update, usuario_id, mensaje):
     nombres_cuentas = [c[1] for c in cuentas]
     
     await update.message.reply_text("⏳ Analizando tus gastos...")
-    gastos, fecha_str = extraer_gastos(mensaje, nombres_cuentas)
+    gastos, fecha_str = extraer_gastos(mensaje, nombres_cuentas, usuario_id)
 
     if not gastos:
         await update.message.reply_text(
@@ -465,9 +465,9 @@ async def handle_descripcion(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
 async def registrar_transaccion(update, telegram_id, monto, medio, destinatario, fecha, descripcion):
     try:
-        categoria = clasificar_gasto(descripcion)
-        emoji = EMOJIS_CATEGORIA.get(categoria, "📦")
         usuario_id = obtener_o_crear_usuario(telegram_id)
+        categoria = clasificar_gasto(descripcion, usuario_id)
+        emoji = EMOJIS_CATEGORIA.get(categoria, "📦")
         guardar_transaccion(usuario_id, monto, medio, descripcion, categoria, destinatario, fecha)
 
         # Escapar caracteres especiales de Markdown en campos dinámicos
@@ -703,8 +703,8 @@ async def ingreso_recibir_descripcion(update: Update, context: ContextTypes.DEFA
     descripcion = update.message.text.strip()
     datos = ingreso_pendiente.pop(tid, {})
     monto = datos.get("monto", 0)
-    categoria = clasificar_ingreso(descripcion)
     usuario_id = obtener_o_crear_usuario(tid)
+    categoria = clasificar_ingreso(descripcion, usuario_id)
     guardar_ingreso(usuario_id, monto, descripcion, categoria)
     await update.message.reply_text(
         f"✅ *Ingreso registrado*\n\n"
@@ -814,7 +814,7 @@ async def pago_fijo_dia(update: Update, context: ContextTypes.DEFAULT_TYPE):
             raise ValueError
         datos = pago_fijo_pendiente.pop(tid, {})
         usuario_id = obtener_o_crear_usuario(tid)
-        categoria = clasificar_gasto(datos["descripcion"])
+        categoria = clasificar_gasto(datos["descripcion"], usuario_id)
         guardar_pago_fijo(usuario_id, datos["descripcion"], datos["monto"], dia, categoria)
         await update.message.reply_text(
             f"✅ *Pago fijo registrado*\n\n"
@@ -1442,7 +1442,7 @@ async def handle_texto_router(update: Update, context: ContextTypes.DEFAULT_TYPE
         trans_id = info_edicion["id"]
         tipo = info_edicion.get("tipo", "gasto")
         try:
-            datos = extraer_edicion(update.message.text.strip())
+            datos = extraer_edicion(update.message.text.strip(), obtener_o_crear_usuario(tid))
             monto = datos.get("monto", 0)
             descripcion = datos.get("descripcion", "")
             categoria = datos.get("categoria", "Otros")
@@ -1517,7 +1517,7 @@ async def handle_texto_router(update: Update, context: ContextTypes.DEFAULT_TYPE
                 if not 1 <= dia <= 31:
                     raise ValueError
                 usuario_id = obtener_o_crear_usuario(tid)
-                categoria = clasificar_gasto(datos["descripcion"])
+                categoria = clasificar_gasto(datos["descripcion"], usuario_id)
                 guardar_pago_fijo(usuario_id, datos["descripcion"], datos["monto"], dia, categoria)
                 pago_fijo_pendiente.pop(tid)
                 await update.message.reply_text(

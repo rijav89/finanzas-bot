@@ -22,6 +22,24 @@ def obtener_o_crear_usuario(telegram_id: int) -> int:
                 usuario_id = usuario[0]
             return usuario_id
 
+# ── Categorías ───────────────────────────────────────────────────────────────
+
+def obtener_categorias(usuario_id: int, tipo: str) -> list:
+    """Nombres que el usuario puede usar: las de sistema más las propias.
+
+    Excluye tipo 'ambos' (Transferencia): no se clasifica, se deduce del flujo.
+    """
+    with db_pool.connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT nombre FROM categorias "
+                "WHERE (usuario_id IS NULL OR usuario_id=%s) AND activa AND tipo=%s "
+                "ORDER BY es_sistema DESC, nombre",
+                (usuario_id, tipo),
+            )
+            return [fila[0] for fila in cur.fetchall()]
+
+
 # ── Cuentas ──────────────────────────────────────────────────────────────────
 
 def obtener_cuentas(usuario_id: int, solo_activas: bool = True) -> list:

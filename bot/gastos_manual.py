@@ -6,23 +6,24 @@ Detecta intención y extrae datos con Qwen (OpenAI-compatible API).
 import json
 from openai import OpenAI
 from config import DASHSCOPE_API_KEY, QWEN_BASE_URL, QWEN_MODEL_TEXT
-from categorias import CATEGORIAS_DISPONIBLES, CATEGORIAS_INGRESO_DISPONIBLES
+from categorias import catalogo
 
 client = OpenAI(
     api_key=DASHSCOPE_API_KEY,
     base_url=QWEN_BASE_URL,
 )
 
-# El catálogo vive en categorias.py: si se arma a mano acá, las dos listas se
-# desincronizan y el modelo devuelve categorías que la base no conoce.
-_ENUM_GASTO = "|".join(CATEGORIAS_DISPONIBLES)
-_ENUM_INGRESO = "|".join(CATEGORIAS_INGRESO_DISPONIBLES)
+
+def _opciones(tipo: str, usuario_id=None) -> list:
+    """El catálogo se lee de la base (incluye las categorías propias del usuario):
+    armarlo a mano acá lo desincronizaría de lo que el panel ofrece."""
+    return list(catalogo(tipo, usuario_id))
 
 
-def _validar(valor, catalogo: list[str], defecto: str) -> str:
+def _validar(valor, opciones: list, defecto: str) -> str:
     """El modelo a veces responde con tildes o mayúsculas distintas."""
     if isinstance(valor, str):
-        for c in catalogo:
+        for c in opciones:
             if c.lower() == valor.strip().lower():
                 return c
     return defecto
@@ -80,16 +81,17 @@ Extrae los datos del ingreso. Responde SOLO con JSON válido:
   "fecha": "<YYYY-MM-DD>"
 }}"""
 
-def extraer_ingreso(mensaje: str, cuentas=None) -> dict:
+def extraer_ingreso(mensaje: str, cuentas=None, usuario_id=None) -> dict:
     from datetime import datetime
     hoy = datetime.now().strftime("%Y-%m-%d")
     cuentas_str = ", ".join(cuentas) if cuentas else "Principal"
+    opciones = _opciones("ingreso", usuario_id)
     try:
         raw = _call(PROMPT_INGRESO.format(
-            mensaje=mensaje, hoy=hoy, cuentas=cuentas_str, categorias=_ENUM_INGRESO,
+            mensaje=mensaje, hoy=hoy, cuentas=cuentas_str, categorias="|".join(opciones),
         ))
         datos = json.loads(raw)
-        datos["categoria"] = _validar(datos.get("categoria"), CATEGORIAS_INGRESO_DISPONIBLES, "Otros ingresos")
+        datos["categoria"] = _validar(datos.get("categoria"), opciones, "Otros ingresos")
         return datos
     except Exception:
         return {"monto": 0, "descripcion": "Ingreso desconocido", "categoria": "Otros ingresos", "medio": "No especificado", "cuenta_destino": "Principal", "fecha": hoy}
@@ -113,18 +115,19 @@ Extrae fecha y lista de gastos. Responde SOLO con JSON válido:
 }}
 Adapta 'fecha' según mencione el usuario (ej. "ayer" resta 1 día). Si no menciona, usa {hoy}."""
 
-def extraer_gastos(mensaje: str, cuentas=None) -> tuple[list[dict], str]:
+def extraer_gastos(mensaje: str, cuentas=None, usuario_id=None) -> tuple[list[dict], str]:
     from datetime import datetime
     hoy = datetime.now().strftime("%Y-%m-%d")
     cuentas_str = ", ".join(cuentas) if cuentas else "Principal"
+    opciones = _opciones("gasto", usuario_id)
     try:
         raw = _call(PROMPT_GASTOS.format(
-            mensaje=mensaje, hoy=hoy, cuentas=cuentas_str, categorias=_ENUM_GASTO,
+            mensaje=mensaje, hoy=hoy, cuentas=cuentas_str, categorias="|".join(opciones),
         ))
         data = json.loads(raw)
         gastos = data.get("gastos", [])
         for g in gastos:
-            g["categoria"] = _validar(g.get("categoria"), CATEGORIAS_DISPONIBLES, "Otros")
+            g["categoria"] = _validar(g.get("categoria"), opciones, "Otros")
         return gastos, data.get("fecha", hoy)
     except Exception:
         return [], hoy
@@ -158,9 +161,11 @@ Responde SOLO con JSON válido:
   "categoria": "<{categorias} o vacío>"
 }}"""
 
-def extraer_edicion(mensaje: str) -> dict:
+def extraer_edicion(mensaje: str, usuario_id=None) -> dict:
     try:
-        raw = _call(PROMPT_EDICION.format(mensaje=mensaje, categorias=_ENUM_GASTO))
+        raw = _call(PROMPT_EDICION.format(
+            mensaje=mensaje, categorias="|".join(_opciones("gasto", usuario_id)),
+        ))
         return json.loads(raw)
     except Exception:
         return {"monto": 0, "descripcion": "", "categoria": ""}
