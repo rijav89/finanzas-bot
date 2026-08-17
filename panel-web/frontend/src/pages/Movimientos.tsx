@@ -1,5 +1,6 @@
 import { Pencil, Search, SlidersHorizontal, Trash2 } from "lucide-react";
 import { useState } from "react";
+import { useSearchParams } from "react-router-dom";
 
 import { useEliminarMovimiento, useMovimientos } from "@/api/queries";
 import type { Movimiento } from "@/api/types";
@@ -18,8 +19,14 @@ const MESES = [
 ];
 
 export default function Movimientos() {
+  // Permite entrar ya filtrado desde otras pantallas (ej. «Ver todos los ingresos»)
+  const [params] = useSearchParams();
+  const inicial = params.get("tipo");
+
   const [q, setQ] = useState("");
-  const [filtro, setFiltro] = useState<Filtro>("todos");
+  const [filtro, setFiltro] = useState<Filtro>(
+    inicial === "gasto" || inicial === "ingreso" ? inicial : "todos",
+  );
   const { data, isPending } = useMovimientos({
     q: q || undefined,
     tipo: filtro === "todos" ? undefined : filtro,

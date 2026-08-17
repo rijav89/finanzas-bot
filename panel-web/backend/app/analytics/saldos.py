@@ -58,8 +58,46 @@ _RESUMEN_SQL = text("""
             AND i.fecha >= :desde AND i.fecha < :hasta
           GROUP BY i.categoria
         ) z
-      ), '[]'::json) AS ingresos_por_categoria
+      ), '[]'::json) AS ingresos_por_categoria,
+
+      -- Widget «Últimos ingresos»: los más recientes, sin importar el mes en curso
+      COALESCE((
+        SELECT json_agg(u ORDER BY u.fecha DESC, u.id DESC)
+        FROM (
+          SELECT i.id, i.monto, i.categoria, i.descripcion, i.fecha, c.nombre AS cuenta
+          FROM ingresos i
+          LEFT JOIN cuentas c ON c.id = i.cuenta_id
+          WHERE i.usuario_id = :uid AND i.categoria != 'Transferencia'
+          ORDER BY i.fecha DESC, i.id DESC
+          LIMIT 5
+        ) u
+      ), '[]'::json) AS ultimos_ingresos,
+
+      -- Widget «Tendencia de saldo»: saldo al cierre de cada mes de la ventana.
+      -- Las transferencias no se excluyen: a nivel global se netean solas.
+      COALESCE((
+        SELECT json_agg(s ORDER BY s.mes)
+        FROM (
+          SELECT m.mes::date AS mes,
+                 (SELECT COALESCE(SUM(c.saldo_inicial), 0) FROM cuentas c
+                  WHERE c.usuario_id = :uid AND c.activa)
+                 + COALESCE((SELECT SUM(i.monto) FROM ingresos i
+                             JOIN cuentas c ON c.id = i.cuenta_id
+                             WHERE c.usuario_id = :uid AND c.activa AND i.fecha < m.corte), 0)
+                 - COALESCE((SELECT SUM(t.monto) FROM transacciones t
+                             JOIN cuentas c ON c.id = t.cuenta_id
+                             WHERE c.usuario_id = :uid AND c.activa AND t.fecha < m.corte), 0)
+                 AS saldo
+          FROM (
+            SELECT g AS mes, g + interval '1 month' AS corte
+            FROM generate_series(:tend_desde::date, :desde::date, interval '1 month') g
+          ) m
+        ) s
+      ), '[]'::json) AS tendencia_saldo
 """)
+
+# Meses que muestra el gráfico de tendencia, contando el mes en curso.
+MESES_TENDENCIA = 6
 
 
 def limites_mes(anio: int, mes: int) -> tuple[date, date]:
@@ -68,12 +106,23 @@ def limites_mes(anio: int, mes: int) -> tuple[date, date]:
     return desde, hasta
 
 
+def inicio_ventana_tendencia(desde: date) -> date:
+    """Primer mes del gráfico de tendencia, contando `desde` como el último."""
+    total = desde.year * 12 + (desde.month - 1) - (MESES_TENDENCIA - 1)
+    return date(total // 12, total % 12 + 1, 1)
+
+
 async def resumen_dashboard(session: AsyncSession, usuario_id: int, anio: int, mes: int) -> dict:
     desde, hasta = limites_mes(anio, mes)
-    params = {"uid": usuario_id, "desde": desde, "hasta": hasta}
+    params = {
+        "uid": usuario_id,
+        "desde": desde,
+        "hasta": hasta,
+        "tend_desde": inicio_ventana_tendencia(desde),
+    }
 
     if session.bind.dialect.name != "postgresql":
-        # SQLite (tests) no tiene json_agg: mismo resultado con queries separadas.
+        # SQLite (tests) no tiene json_agg ni generate_series: mismo resultado por partes.
         return await _resumen_portable(session, usuario_id, anio, mes, params)
 
     fila = (await session.execute(_RESUMEN_SQL, params)).one()
@@ -86,6 +135,8 @@ async def resumen_dashboard(session: AsyncSession, usuario_id: int, anio: int, m
         "ingresos_mes": fila.ingresos,
         "por_categoria": fila.por_categoria or [],
         "ingresos_por_categoria": fila.ingresos_por_categoria or [],
+        "ultimos_ingresos": fila.ultimos_ingresos or [],
+        "tendencia_saldo": fila.tendencia_saldo or [],
     }
 
 
@@ -127,6 +178,27 @@ _CATEGORIAS_ING_PORTABLE = text("""
     ORDER BY total DESC
 """)
 
+_ULTIMOS_ING_PORTABLE = text("""
+    SELECT i.id, i.monto, i.categoria, i.descripcion, i.fecha, c.nombre AS cuenta
+    FROM ingresos i
+    LEFT JOIN cuentas c ON c.id = i.cuenta_id
+    WHERE i.usuario_id = :uid AND i.categoria != 'Transferencia'
+    ORDER BY i.fecha DESC, i.id DESC
+    LIMIT 5
+""")
+
+_SALDO_AL_CORTE_PORTABLE = text("""
+    SELECT (SELECT COALESCE(SUM(c.saldo_inicial), 0) FROM cuentas c
+            WHERE c.usuario_id = :uid AND c.activa)
+         + COALESCE((SELECT SUM(i.monto) FROM ingresos i
+                     JOIN cuentas c ON c.id = i.cuenta_id
+                     WHERE c.usuario_id = :uid AND c.activa AND i.fecha < :corte), 0)
+         - COALESCE((SELECT SUM(t.monto) FROM transacciones t
+                     JOIN cuentas c ON c.id = t.cuenta_id
+                     WHERE c.usuario_id = :uid AND c.activa AND t.fecha < :corte), 0)
+         AS saldo
+""")
+
 
 async def _resumen_portable(
     session: AsyncSession, usuario_id: int, anio: int, mes: int, params: dict
@@ -150,6 +222,28 @@ async def _resumen_portable(
         {"categoria": r.categoria, "total": r.total, "n": r.n}
         for r in (await session.execute(_CATEGORIAS_ING_PORTABLE, params)).all()
     ]
+    ultimos_ingresos = [
+        {
+            "id": r.id,
+            "monto": r.monto,
+            "categoria": r.categoria,
+            "descripcion": r.descripcion,
+            "fecha": r.fecha,
+            "cuenta": r.cuenta,
+        }
+        for r in (await session.execute(_ULTIMOS_ING_PORTABLE, {"uid": usuario_id})).all()
+    ]
+
+    tendencia_saldo = []
+    mes_ventana = inicio_ventana_tendencia(params["desde"])
+    for _ in range(MESES_TENDENCIA):
+        _, corte = limites_mes(mes_ventana.year, mes_ventana.month)
+        saldo = await session.scalar(
+            _SALDO_AL_CORTE_PORTABLE, {"uid": usuario_id, "corte": corte}
+        )
+        tendencia_saldo.append({"mes": mes_ventana, "saldo": saldo})
+        mes_ventana = corte
+
     return {
         "periodo": {"anio": anio, "mes": mes},
         "saldo_total": sum(float(s["saldo"]) for s in saldos),
@@ -158,4 +252,6 @@ async def _resumen_portable(
         "ingresos_mes": totales.ingresos,
         "por_categoria": por_categoria,
         "ingresos_por_categoria": ingresos_por_categoria,
+        "ultimos_ingresos": ultimos_ingresos,
+        "tendencia_saldo": tendencia_saldo,
     }

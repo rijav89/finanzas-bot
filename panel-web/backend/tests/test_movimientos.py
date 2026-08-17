@@ -89,6 +89,35 @@ async def test_dashboard_saldo_historico_y_categorias(cliente, datos):
     assert cat["Comida"] == 250
 
 
+async def test_dashboard_ultimos_ingresos_y_tendencia(cliente, datos):
+    from app.analytics.saldos import MESES_TENDENCIA
+
+    como(cliente, AUTH_UID_A)
+    for monto, desc in (("1000", "sueldo"), ("300", "freelance")):
+        await cliente.post(
+            "/api/v1/ingresos",
+            json={"monto": monto, "cuenta_id": datos["cuenta_a"], "descripcion": desc},
+        )
+    await cliente.post(
+        "/api/v1/gastos",
+        json={"monto": "200", "categoria": "Comida", "cuenta_id": datos["cuenta_a"]},
+    )
+
+    d = (await cliente.get("/api/v1/dashboard/resumen")).json()["data"]
+
+    ultimos = d["ultimos_ingresos"]
+    assert [i["descripcion"] for i in ultimos] == ["freelance", "sueldo"]  # más reciente primero
+    assert ultimos[0]["cuenta"] == "Principal"
+
+    tendencia = d["tendencia_saldo"]
+    assert len(tendencia) == MESES_TENDENCIA
+    # El último punto es el cierre del mes en curso: 1000 + 300 - 200
+    assert float(tendencia[-1]["saldo"]) == 1100
+    # Los meses anteriores no tenían movimientos todavía
+    assert float(tendencia[0]["saldo"]) == 0
+    assert [t["mes"] for t in tendencia] == sorted(t["mes"] for t in tendencia)
+
+
 async def test_editar_y_eliminar_movimiento_propio(cliente, datos):
     como(cliente, AUTH_UID_A)
     r = await cliente.post(

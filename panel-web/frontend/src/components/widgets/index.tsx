@@ -7,11 +7,15 @@ import { BentoCard } from "@/components/bento/BentoCard";
 import { Badge } from "@/components/ui/Badge";
 import { BarraProgreso } from "@/components/ui/BarraProgreso";
 import { cn } from "@/lib/cn";
+import { IconoTile } from "@/lib/iconos";
 import { money } from "@/lib/money";
 import type { WidgetId } from "@/stores/bentoStore";
 
 const SankeyFlujo = lazy(() =>
   import("@/components/charts/SankeyFlujo").then((m) => ({ default: m.SankeyFlujo })),
+);
+const LineaSaldo = lazy(() =>
+  import("@/components/charts/LineaSaldo").then((m) => ({ default: m.LineaSaldo })),
 );
 
 /** Colores de serie para cuentas y categorías, en el orden del mockup. */
@@ -33,6 +37,8 @@ export const REGISTRO: Record<
 > = {
   "saldo-total": { prioridad: 1, span: "lg:col-span-3", Componente: SaldoTotal },
   "gasto-mes": { prioridad: 2, span: "lg:col-span-3", Componente: GastoMes },
+  "tendencia-saldo": { prioridad: 3, span: "lg:col-span-4", Componente: Tendencia },
+  "ultimos-ingresos": { prioridad: 3, span: "lg:col-span-2", Componente: UltimosIngresos },
   sankey: { prioridad: 4, span: "lg:col-span-4", Componente: Flujo },
   categorias: { prioridad: 5, span: "lg:col-span-2", Componente: Categorias },
   insights: { prioridad: 6, span: "lg:col-span-6", Componente: Insights },
@@ -164,6 +170,79 @@ function Flujo({ datos, className }: WidgetProps) {
       </div>
     </BentoCard>
   );
+}
+
+function Tendencia({ datos, className }: WidgetProps) {
+  const puntos = datos.tendencia_saldo ?? [];
+
+  return (
+    <BentoCard
+      id="tendencia-saldo"
+      titulo="Tendencia de saldo"
+      subtitulo={`Saldo al cierre de los últimos ${puntos.length || 6} meses`}
+      className={className}
+    >
+      <div className="mt-3">
+        <Suspense fallback={<div className="h-52 animate-pulse rounded-xl bg-card-soft" />}>
+          <LineaSaldo puntos={puntos} />
+        </Suspense>
+      </div>
+    </BentoCard>
+  );
+}
+
+function UltimosIngresos({ datos, className }: WidgetProps) {
+  const ingresos = datos.ultimos_ingresos ?? [];
+
+  return (
+    <BentoCard id="ultimos-ingresos" titulo="Últimos ingresos" className={className}>
+      {ingresos.length === 0 ? (
+        <p className="mt-4 text-sm text-ink-3">Todavía no registraste ingresos.</p>
+      ) : (
+        <>
+          <ul className="mt-3 space-y-1">
+            {ingresos.map((i) => (
+              <li key={i.id} className="flex items-center gap-3 py-1.5">
+                <IconoTile categoria={i.categoria} ingreso tamano="size-9" />
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-[15px] font-semibold">
+                    {i.descripcion?.trim() || i.categoria || "Ingreso"}
+                  </span>
+                  <span className="block truncate text-xs text-ink-3">
+                    {fechaCorta(i.fecha)}
+                    {i.cuenta && ` · ${i.cuenta}`}
+                  </span>
+                </span>
+                <span className="shrink-0 font-semibold text-good-ink tnum">
+                  +{money(Number(i.monto))}
+                </span>
+              </li>
+            ))}
+          </ul>
+          <Link
+            to="/movimientos?tipo=ingreso"
+            className="mt-4 flex items-center gap-1 text-sm font-semibold text-accent"
+          >
+            Ver todos los ingresos
+            <ChevronRight size={16} />
+          </Link>
+        </>
+      )}
+    </BentoCard>
+  );
+}
+
+/** 'Hoy' y 'Ayer' se leen más rápido que una fecha en una lista corta. */
+function fechaCorta(iso: string | null): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  const dia = d.toLocaleDateString("sv-SE");
+  const hoy = new Date().toLocaleDateString("sv-SE");
+  const ayer = new Date(Date.now() - 86_400_000).toLocaleDateString("sv-SE");
+  if (dia === hoy) return "Hoy";
+  if (dia === ayer) return "Ayer";
+  return d.toLocaleDateString("es-PE", { day: "numeric", month: "short" });
 }
 
 function Categorias({ datos, className }: WidgetProps) {

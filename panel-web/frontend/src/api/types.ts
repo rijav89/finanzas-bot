@@ -30,6 +30,21 @@ export interface CategoriaResumen {
   n: number;
 }
 
+export interface IngresoReciente {
+  id: number;
+  monto: number;
+  categoria: string | null;
+  descripcion: string | null;
+  fecha: string | null;
+  cuenta: string | null;
+}
+
+/** Un punto del gráfico de tendencia: saldo al cierre de ese mes. */
+export interface PuntoSaldo {
+  mes: string;
+  saldo: number;
+}
+
 export interface DashboardResumen {
   periodo: { anio: number; mes: number };
   saldo_total: number;
@@ -39,6 +54,8 @@ export interface DashboardResumen {
   por_categoria: CategoriaResumen[];
   /** Fuentes de ingreso del mes (Sueldo, Freelance…), origen del diagrama de flujo. */
   ingresos_por_categoria: CategoriaResumen[];
+  ultimos_ingresos: IngresoReciente[];
+  tendencia_saldo: PuntoSaldo[];
 }
 
 export interface Movimiento {
@@ -59,25 +76,31 @@ export interface MovimientosPage {
   offset: number;
 }
 
-/** Las 14 del bot (bot/categorias.py) — mismo orden y grafía (sin tildes). */
+/** Respaldo por si el catálogo aún no cargó: el real vive en la tabla `categorias`
+ *  y lo comparten el bot y el panel (bot/categorias.py tiene la misma grafía). */
 export const CATEGORIAS = [
-  "Comida", "Supermercado", "Transporte", "Servicios", "Salud",
-  "Educacion", "Ropa", "Entretenimiento", "Tecnologia", "Finanzas",
-  "Mascotas", "Belleza", "Hogar", "Otros",
+  "Comida", "Supermercado", "Vivienda", "Servicios", "Transporte y vehiculo",
+  "Salud", "Educacion", "Ropa", "Entretenimiento", "Suscripciones",
+  "Tecnologia", "Finanzas", "Mascotas", "Belleza", "Hogar",
+  "Regalos", "Impuestos", "Otros",
 ] as const;
 
-/** Origen del dinero que entra. 'Ingreso' es el default histórico del bot. */
 export const CATEGORIAS_INGRESO = [
-  "Sueldo", "Freelance", "Venta", "Regalo", "Reembolso", "Ingreso",
+  "Sueldo", "Freelance", "Negocio", "Regalo recibido",
+  "Reembolso", "Intereses", "Otros ingresos",
 ] as const;
 
 // ── Módulos F4 ───────────────────────────────────────────────────────────────
 
 export type Semaforo = "bien" | "atencion" | "critico" | "info";
 
+export type TipoCategoria = "gasto" | "ingreso" | "ambos";
+
 export interface Categoria {
   id: number;
   nombre: string;
+  /** 'ambos' es solo Transferencia: aparece en los dos lados de un traslado. */
+  tipo: TipoCategoria;
   icono: string | null;
   color: string | null;
   es_sistema: boolean;

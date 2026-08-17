@@ -208,6 +208,19 @@ export function AppShell({ children }: { children: ReactNode }) {
             </nav>
 
             <div className="mt-3 border-t border-hairline pt-3">
+              <NavLink
+                to="/configuracion"
+                onClick={() => setMasAbierto(false)}
+                className={({ isActive }) =>
+                  cn(
+                    "mb-2 flex items-center gap-3 rounded-xl px-3 py-3 text-[15px] font-medium",
+                    isActive ? "bg-accent-soft text-accent-ink" : "text-ink-2",
+                  )
+                }
+              >
+                <Settings size={19} />
+                Configuración
+              </NavLink>
               <SelectorTema />
               <button
                 onClick={() => logout.mutate()}

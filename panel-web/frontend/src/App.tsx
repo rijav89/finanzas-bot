@@ -15,6 +15,7 @@ const Deudas = lazy(() => import("@/pages/Deudas"));
 const DeudaDetalle = lazy(() => import("@/pages/DeudaDetalle"));
 const Ahorros = lazy(() => import("@/pages/Ahorros"));
 const Recurrentes = lazy(() => import("@/pages/Recurrentes"));
+const Configuracion = lazy(() => import("@/pages/Configuracion"));
 const Login = lazy(() => import("@/pages/Login"));
 const Vincular = lazy(() => import("@/pages/Vincular"));
 
@@ -75,6 +76,7 @@ function Ruteador() {
           <Route path="/deudas/:id" element={<DeudaDetalle />} />
           <Route path="/ahorros" element={<Ahorros />} />
           <Route path="/recurrentes" element={<Recurrentes />} />
+          <Route path="/configuracion" element={<Configuracion />} />
           <Route path="*" element={<Dashboard />} />
         </Routes>
       </Suspense>

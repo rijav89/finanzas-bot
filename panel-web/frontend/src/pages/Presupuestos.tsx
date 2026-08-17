@@ -30,7 +30,7 @@ export default function Presupuestos() {
   const [mes, setMes] = useState(hoy.getMonth() + 1);
 
   const { data, isPending } = usePresupuestos(anio, mes);
-  const { data: categorias } = useCategorias();
+  const { data: categorias } = useCategorias({ tipo: "gasto" });
   const guardar = useGuardarPresupuestos();
 
   const [editando, setEditando] = useState(false);

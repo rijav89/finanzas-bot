@@ -60,7 +60,7 @@ from db import (
     desvincular_web,
 )
 from ocr import procesar_voucher
-from categorias import clasificar_gasto
+from categorias import clasificar_gasto, clasificar_ingreso
 from gastos_manual import detectar_intencion, extraer_gastos, extraer_ingreso, extraer_edicion, extraer_transferencia
 from graficos import generar_grafico_categorias, generar_grafico_resumen
 
@@ -237,13 +237,14 @@ async def handle_texto(update: Update, context: ContextTypes.DEFAULT_TYPE):
         datos = extraer_ingreso(mensaje, nombres_cuentas)
         monto = datos.get("monto", 0)
         descripcion = datos.get("descripcion", "Ingreso")
+        categoria = datos.get("categoria") or "Otros ingresos"
         medio = datos.get("medio", "No especificado")
         cuenta_destino_str = datos.get("cuenta_destino", "Principal")
         cuenta_destino_id = obtener_cuenta_por_nombre(usuario_id, cuenta_destino_str) or obtener_cuenta_principal(usuario_id)
 
         if monto and float(monto) > 0:
             # Tiene monto — preguntar medio si no fue detectado
-            guardar_ingreso(usuario_id, monto, descripcion, cuenta_id=cuenta_destino_id)
+            guardar_ingreso(usuario_id, monto, descripcion, categoria, cuenta_id=cuenta_destino_id)
             if medio == "No especificado":
                 teclado_medio = InlineKeyboardMarkup([
                     [
@@ -702,7 +703,7 @@ async def ingreso_recibir_descripcion(update: Update, context: ContextTypes.DEFA
     descripcion = update.message.text.strip()
     datos = ingreso_pendiente.pop(tid, {})
     monto = datos.get("monto", 0)
-    categoria = clasificar_gasto(descripcion) if descripcion else "Ingreso"
+    categoria = clasificar_ingreso(descripcion)
     usuario_id = obtener_o_crear_usuario(tid)
     guardar_ingreso(usuario_id, monto, descripcion, categoria)
     await update.message.reply_text(

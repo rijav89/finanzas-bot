@@ -189,7 +189,7 @@ function diasHasta(iso: string): number {
 
 function FormRecurrente({ onCerrar }: { onCerrar: () => void }) {
   const { data: cuentas } = useCuentas();
-  const { data: categorias } = useCategorias();
+  const { data: categorias } = useCategorias({ tipo: "gasto" });
   const crear = useCrearRecurrente();
 
   const [descripcion, setDescripcion] = useState("");

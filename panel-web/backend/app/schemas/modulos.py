@@ -17,11 +17,14 @@ class _Estricto(BaseModel):
 
 class CategoriaCrear(_Estricto):
     nombre: str = Field(min_length=1, max_length=40)
+    tipo: Literal["gasto", "ingreso"] = "gasto"
     icono: str | None = Field(default=None, max_length=16)
     color: str | None = Field(default=None, pattern=r"^#[0-9a-fA-F]{6}$")
 
 
 class CategoriaEditar(_Estricto):
+    # `tipo` no se edita a propósito: cambiar de lado una categoría con movimientos
+    # ya registrados los dejaría contados en el bando equivocado.
     nombre: str | None = Field(default=None, min_length=1, max_length=40)
     icono: str | None = Field(default=None, max_length=16)
     color: str | None = Field(default=None, pattern=r"^#[0-9a-fA-F]{6}$")

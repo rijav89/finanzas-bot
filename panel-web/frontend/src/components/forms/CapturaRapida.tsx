@@ -1,7 +1,7 @@
 import { ArrowDownLeft, ArrowUpRight, Calendar, Check, Pencil, Plus, X } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
-import { useCrearMovimiento, useCuentas } from "@/api/queries";
+import { useCategorias, useCrearMovimiento, useCuentas } from "@/api/queries";
 import { CATEGORIAS, CATEGORIAS_INGRESO } from "@/api/types";
 import { cn } from "@/lib/cn";
 import { iconoCategoria } from "@/lib/iconos";
@@ -19,7 +19,7 @@ export function CapturaRapida() {
 
   const [tipo, setTipo] = useState<TipoMovimiento>("gasto");
   const [monto, setMonto] = useState("");
-  const [categoria, setCategoria] = useState<string>(CATEGORIAS[0]);
+  const [categoria, setCategoria] = useState("");
   const [cuentaId, setCuentaId] = useState<number | null>(null);
   const [fecha, setFecha] = useState(hoyISO);
   const [nota, setNota] = useState("");
@@ -28,10 +28,25 @@ export function CapturaRapida() {
 
   const abierto = tipoInicial !== null;
 
+  // El catálogo real vive en la base y lo comparte el bot; las constantes solo
+  // cubren el primer render mientras la respuesta llega.
+  const { data: catalogo } = useCategorias({ tipo });
+  const catsBase = useMemo(
+    () =>
+      // 'ambos' es Transferencia: tiene su propio flujo, no se registra desde acá
+      catalogo?.filter((c) => c.tipo !== "ambos").map((c) => c.nombre) ??
+      [...(tipo === "gasto" ? CATEGORIAS : CATEGORIAS_INGRESO)],
+    [catalogo, tipo],
+  );
+
+  useEffect(() => {
+    if (catsBase.length && !catsBase.includes(categoria)) setCategoria(catsBase[0]);
+  }, [catsBase, categoria]);
+
   useEffect(() => {
     if (!abierto) return;
     setTipo(tipoInicial);
-    setCategoria(tipoInicial === "gasto" ? CATEGORIAS[0] : CATEGORIAS_INGRESO[0]);
+    setCategoria("");
     setMonto("");
     setNota("");
     setFecha(hoyISO());
@@ -63,13 +78,12 @@ export function CapturaRapida() {
   if (!abierto) return null;
 
   const esGasto = tipo === "gasto";
-  const catsBase = esGasto ? CATEGORIAS : CATEGORIAS_INGRESO;
   const cats = verTodasCat ? catsBase : catsBase.slice(0, 7);
   const montoValido = Number(monto) > 0;
 
   function cambiarTipo(nuevo: TipoMovimiento) {
     setTipo(nuevo);
-    setCategoria(nuevo === "gasto" ? CATEGORIAS[0] : CATEGORIAS_INGRESO[0]);
+    setCategoria(""); // el efecto elige la primera del catálogo del nuevo tipo
     montoRef.current?.focus();
   }
 

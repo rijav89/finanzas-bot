@@ -41,6 +41,71 @@ async def test_no_editar_categoria_ajena(cliente, datos):
     assert r.status_code == 404
 
 
+async def test_filtrar_categorias_por_tipo(cliente, datos, sesiones):
+    from app.models import Categoria
+
+    async with sesiones() as s:
+        async with s.begin():
+            s.add_all(
+                [
+                    Categoria(usuario_id=None, nombre="Comida", es_sistema=True, tipo="gasto"),
+                    Categoria(usuario_id=None, nombre="Sueldo", es_sistema=True, tipo="ingreso"),
+                    Categoria(
+                        usuario_id=None, nombre="Transferencia", es_sistema=True, tipo="ambos"
+                    ),
+                ]
+            )
+
+    como(cliente, AUTH_UID_A)
+    r = await cliente.get("/api/v1/categorias", params={"tipo": "ingreso"})
+    nombres = {c["nombre"] for c in r.json()["data"]}
+    assert "Sueldo" in nombres
+    assert "Comida" not in nombres
+    # 'ambos' cae de los dos lados: un traslado aparece como salida y como entrada
+    assert "Transferencia" in nombres
+
+
+async def test_renombrar_categoria_arrastra_los_movimientos(cliente, datos, sesiones):
+    """La columna `categoria` es TEXT sin FK: si el rename no arrastra, los
+    movimientos quedan apuntando a una categoría que ya no existe."""
+    from sqlalchemy import text
+
+    como(cliente, AUTH_UID_A)
+    r = await cliente.post("/api/v1/categorias", json={"nombre": "Gimnasio"})
+    cat_id = r.json()["data"]["id"]
+
+    r = await cliente.post(
+        "/api/v1/gastos",
+        json={"monto": "50.00", "categoria": "Gimnasio", "cuenta_id": datos["cuenta_a"]},
+    )
+    assert r.status_code == 201
+
+    r = await cliente.patch(f"/api/v1/categorias/{cat_id}", json={"nombre": "Deporte"})
+    assert r.status_code == 200
+
+    async with sesiones() as s:
+        categorias = (
+            await s.execute(
+                text("SELECT categoria FROM transacciones WHERE usuario_id = :uid"),
+                {"uid": datos["usuario_a"]},
+            )
+        ).scalars().all()
+    assert categorias == ["Deporte"]
+
+
+async def test_renombrar_a_nombre_existente_409(cliente, datos, sesiones):
+    from app.models import Categoria
+
+    async with sesiones() as s:
+        async with s.begin():
+            s.add(Categoria(usuario_id=None, nombre="Salud", es_sistema=True))
+
+    como(cliente, AUTH_UID_A)
+    cat_id = (await cliente.post("/api/v1/categorias", json={"nombre": "Gimnasio"})).json()["data"]["id"]
+    r = await cliente.patch(f"/api/v1/categorias/{cat_id}", json={"nombre": "salud"})
+    assert r.status_code == 409
+
+
 # ── Presupuestos ─────────────────────────────────────────────────────────────
 
 async def test_presupuesto_semaforo_y_gastado(cliente, datos):

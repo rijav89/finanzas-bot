@@ -4,6 +4,8 @@ import { persist } from "zustand/middleware";
 export const WIDGETS_DEFAULT = [
   "saldo-total",
   "gasto-mes",
+  "tendencia-saldo",
+  "ultimos-ingresos",
   "sankey",
   "categorias",
   "insights",

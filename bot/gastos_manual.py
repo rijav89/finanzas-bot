@@ -6,11 +6,27 @@ Detecta intención y extrae datos con Qwen (OpenAI-compatible API).
 import json
 from openai import OpenAI
 from config import DASHSCOPE_API_KEY, QWEN_BASE_URL, QWEN_MODEL_TEXT
+from categorias import CATEGORIAS_DISPONIBLES, CATEGORIAS_INGRESO_DISPONIBLES
 
 client = OpenAI(
     api_key=DASHSCOPE_API_KEY,
     base_url=QWEN_BASE_URL,
 )
+
+# El catálogo vive en categorias.py: si se arma a mano acá, las dos listas se
+# desincronizan y el modelo devuelve categorías que la base no conoce.
+_ENUM_GASTO = "|".join(CATEGORIAS_DISPONIBLES)
+_ENUM_INGRESO = "|".join(CATEGORIAS_INGRESO_DISPONIBLES)
+
+
+def _validar(valor, catalogo: list[str], defecto: str) -> str:
+    """El modelo a veces responde con tildes o mayúsculas distintas."""
+    if isinstance(valor, str):
+        for c in catalogo:
+            if c.lower() == valor.strip().lower():
+                return c
+    return defecto
+
 
 def _call(prompt: str) -> str:
     """Llamada base al modelo de texto."""
@@ -58,6 +74,7 @@ Extrae los datos del ingreso. Responde SOLO con JSON válido:
 {{
   "monto": <float>,
   "descripcion": "<descripción>",
+  "categoria": "<{categorias}>",
   "medio": "<Yape|Plin|Transferencia|Efectivo|Depósito|No especificado>",
   "cuenta_destino": "<nombre de cuenta o Principal>",
   "fecha": "<YYYY-MM-DD>"
@@ -68,10 +85,14 @@ def extraer_ingreso(mensaje: str, cuentas=None) -> dict:
     hoy = datetime.now().strftime("%Y-%m-%d")
     cuentas_str = ", ".join(cuentas) if cuentas else "Principal"
     try:
-        raw = _call(PROMPT_INGRESO.format(mensaje=mensaje, hoy=hoy, cuentas=cuentas_str))
-        return json.loads(raw)
+        raw = _call(PROMPT_INGRESO.format(
+            mensaje=mensaje, hoy=hoy, cuentas=cuentas_str, categorias=_ENUM_INGRESO,
+        ))
+        datos = json.loads(raw)
+        datos["categoria"] = _validar(datos.get("categoria"), CATEGORIAS_INGRESO_DISPONIBLES, "Otros ingresos")
+        return datos
     except Exception:
-        return {"monto": 0, "descripcion": "Ingreso desconocido", "medio": "No especificado", "cuenta_destino": "Principal", "fecha": hoy}
+        return {"monto": 0, "descripcion": "Ingreso desconocido", "categoria": "Otros ingresos", "medio": "No especificado", "cuenta_destino": "Principal", "fecha": hoy}
 
 
 # --- 3. Gastos ---
@@ -85,7 +106,7 @@ Extrae fecha y lista de gastos. Responde SOLO con JSON válido:
     {{
       "monto": <float>,
       "descripcion": "<descripción>",
-      "categoria": "<Comida|Supermercado|Transporte|Servicios|Salud|Educacion|Ropa|Entretenimiento|Tecnologia|Finanzas|Mascotas|Belleza|Hogar|Otros>",
+      "categoria": "<{categorias}>",
       "cuenta_origen": "<nombre de cuenta o Principal>"
     }}
   ]
@@ -97,9 +118,14 @@ def extraer_gastos(mensaje: str, cuentas=None) -> tuple[list[dict], str]:
     hoy = datetime.now().strftime("%Y-%m-%d")
     cuentas_str = ", ".join(cuentas) if cuentas else "Principal"
     try:
-        raw = _call(PROMPT_GASTOS.format(mensaje=mensaje, hoy=hoy, cuentas=cuentas_str))
+        raw = _call(PROMPT_GASTOS.format(
+            mensaje=mensaje, hoy=hoy, cuentas=cuentas_str, categorias=_ENUM_GASTO,
+        ))
         data = json.loads(raw)
-        return data.get("gastos", []), data.get("fecha", hoy)
+        gastos = data.get("gastos", [])
+        for g in gastos:
+            g["categoria"] = _validar(g.get("categoria"), CATEGORIAS_DISPONIBLES, "Otros")
+        return gastos, data.get("fecha", hoy)
     except Exception:
         return [], hoy
 
@@ -129,12 +155,12 @@ Responde SOLO con JSON válido:
 {{
   "monto": <float o 0 si no se menciona>,
   "descripcion": "<nueva descripción o vacío>",
-  "categoria": "<Comida|Supermercado|Transporte|Servicios|Salud|Educacion|Ropa|Entretenimiento|Tecnologia|Finanzas|Mascotas|Belleza|Hogar|Otros o vacío>"
+  "categoria": "<{categorias} o vacío>"
 }}"""
 
 def extraer_edicion(mensaje: str) -> dict:
     try:
-        raw = _call(PROMPT_EDICION.format(mensaje=mensaje))
+        raw = _call(PROMPT_EDICION.format(mensaje=mensaje, categorias=_ENUM_GASTO))
         return json.loads(raw)
     except Exception:
         return {"monto": 0, "descripcion": "", "categoria": ""}

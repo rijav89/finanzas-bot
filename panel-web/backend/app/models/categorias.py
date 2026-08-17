@@ -25,6 +25,8 @@ class Categoria(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     usuario_id: Mapped[int | None] = mapped_column(ForeignKey("usuarios.id", ondelete="CASCADE"))
     nombre: Mapped[str] = mapped_column(Text, nullable=False)
+    # 'gasto' | 'ingreso' | 'ambos' (Transferencia, que aparece en los dos lados)
+    tipo: Mapped[str] = mapped_column(Text, nullable=False, server_default=text("'gasto'"))
     icono: Mapped[str | None] = mapped_column(Text)
     color: Mapped[str | None] = mapped_column(Text)
     es_sistema: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))

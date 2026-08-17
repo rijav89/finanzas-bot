@@ -283,7 +283,7 @@ def obtener_transacciones_mes(usuario_id: int) -> list:
 
 # ── Ingresos ─────────────────────────────────────────────────────────────────
 
-def guardar_ingreso(usuario_id: int, monto: float, descripcion: str, categoria: str = "Ingreso", cuenta_id=None, fecha=None):
+def guardar_ingreso(usuario_id: int, monto: float, descripcion: str, categoria: str = "Otros ingresos", cuenta_id=None, fecha=None):
     with db_pool.connection() as conn:
         with conn.cursor() as cur:
             if cuenta_id is None:

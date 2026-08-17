@@ -1,4 +1,5 @@
-import { LogOut, Monitor, Moon, Sun } from "lucide-react";
+import { LogOut, Monitor, Moon, Settings, Sun } from "lucide-react";
+import { Link } from "react-router-dom";
 
 import { useLogout, useMe } from "@/api/queries";
 import { cn } from "@/lib/cn";
@@ -65,6 +66,15 @@ export function MenuCuenta({ onCerrar }: { onCerrar: () => void }) {
       <SelectorTema />
 
       <div className="my-2 border-t border-hairline" />
+
+      <Link
+        to="/configuracion"
+        onClick={onCerrar}
+        className="flex h-11 w-full items-center gap-3 rounded-xl px-3 text-sm font-medium text-ink-2 transition-colors hover:bg-card-soft hover:text-ink"
+      >
+        <Settings size={17} />
+        Configuración
+      </Link>
 
       <button
         onClick={() => {

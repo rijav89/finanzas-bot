@@ -134,11 +134,54 @@ export function useEliminarMovimiento() {
   });
 }
 
-export function useCategorias() {
+export function useCategorias(
+  opciones: { tipo?: "gasto" | "ingreso"; incluirArchivadas?: boolean } = {},
+) {
+  const { tipo, incluirArchivadas } = opciones;
+  const qs = new URLSearchParams();
+  if (tipo) qs.set("tipo", tipo);
+  if (incluirArchivadas) qs.set("incluir_archivadas", "true");
+  const sufijo = qs.toString() ? `?${qs}` : "";
+
   return useQuery({
-    queryKey: ["categorias"],
-    queryFn: () => api<Categoria[]>("/categorias"),
+    queryKey: ["categorias", tipo ?? "todas", incluirArchivadas ?? false],
+    queryFn: () => api<Categoria[]>(`/categorias${sufijo}`),
     staleTime: 10 * 60_000,
+  });
+}
+
+function invalidarCategorias(qc: ReturnType<typeof useQueryClient>) {
+  // Renombrar arrastra los movimientos, así que el dashboard y el historial cambian
+  for (const key of [["categorias"], ["dashboard"], ["movimientos"]])
+    void qc.invalidateQueries({ queryKey: key });
+}
+
+export function useCrearCategoria() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: { nombre: string; tipo: "gasto" | "ingreso"; color?: string; icono?: string }) =>
+      api<Categoria>("/categorias", { method: "POST", body }),
+    onSuccess: () => invalidarCategorias(qc),
+  });
+}
+
+export function useEditarCategoria() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      id,
+      ...body
+    }: { id: number; nombre?: string; color?: string; icono?: string; activa?: boolean }) =>
+      api<Categoria>(`/categorias/${id}`, { method: "PATCH", body }),
+    onSuccess: () => invalidarCategorias(qc),
+  });
+}
+
+export function useArchivarCategoria() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: number) => api(`/categorias/${id}`, { method: "DELETE" }),
+    onSuccess: () => invalidarCategorias(qc),
   });
 }
 
