@@ -20,7 +20,7 @@ Repo: rijav89/finanzas-bot (privado). Versión activa: v3.1.
 - Key SSH: `E:\Proyectos\Finanzas Bot\Keys\ssh-key-2026-08-02-backend.key`
 - Estado (2026-08-15): backend FastAPI desplegado en `/home/ubuntu/finanzas-bot/panel-web/backend` (snapshot vía `git archive` + scp, aún sin git clone), venv propio, `.env` con permisos 600
 - Servicio systemd: `panel-api` (uvicorn 127.0.0.1:8000, MemoryMax=350M, hardening). ⚠️ Tiene `Environment=COOKIE_SECURE=false` TEMPORAL para pruebas locales sin HTTPS — quitar en F6 al configurar nginx+certbot
-- Pendiente F6: nginx server block, certbot/SSL, rate limits, migración 004 (RLS), rotación password BD
+- Pendiente F6: nginx server block, certbot/SSL, rate limits, migración **005** (RLS — el número 004 ya lo tomó el catálogo de categorías), rotación password BD
 
 **Base de datos**: Supabase (plan gratuito)
 - Host: `aws-1-sa-east-1.pooler.supabase.com` · Puerto 5432 · DB `postgres`
@@ -56,7 +56,7 @@ Repo: rijav89/finanzas-bot (privado). Versión activa: v3.1.
 - Registro de gastos por texto natural ("gasté 45 en taxi")
 - Registro de ingresos con fecha histórica ("ayer me pagaron mi sueldo")
 - OCR de comprobantes Yape/Plin (foto → datos extraídos)
-- Categorización automática (14 categorías)
+- Categorización automática: 18 categorías de gasto y 7 de ingreso, definidas en `bot/categorias.py` con una pista de una línea cada una (sin la pista, Qwen confundía Servicios con Hogar). `clasificar_ingreso()` usa el catálogo de ingresos; antes los ingresos pasaban por el de gastos y caían siempre en «Otros»
 - Sistema de cuentas nombradas con aliases semánticos
 - Cuenta "Principal" auto-creada en `/start` con `is_default=true`
 - Transferencias entre cuentas
@@ -99,7 +99,9 @@ REGISTRAR_GASTOS, INICIAR_REGISTRO, REGISTRAR_INGRESO, TRANSFERIR, VER_RESUMEN, 
 - Supabase Auth: proyecto `kzgrexncynqxhlpeypuv`, publishable key en el .env del servidor del panel. Confirmación de email ACTIVADA (los usuarios se crean desde el dashboard, auto-confirmados). Usuario real: ricardo1332@hotmail.com (aún sin vincular a su telegram_id).
 - **F3 completa (2026-08-15)**: SPA Vite+React+Tailwind desplegada (nginx sirve `dist/` en `/var/www/panel` + proxy `/api`). Bento Grid con dnd-kit, Sankey lazy (Nivo), paleta cmdk, captura Mad Libs (gasto/ingreso, fecha con atajos), mobile-first con bottom sheet que respeta el teclado virtual.
 - **F4 backend completo (2026-08-16)**: módulos de categorías, presupuestos (con semáforo), deudas con cronograma de cuotas y pago atómico, ahorros con metas, recurrentes y perfil/metas. 28 rutas, 38 tests. Comando `/vincular` en el bot.
-- Siguientes: F4 frontend (páginas de los módulos), F5 insights IA, F6 deploy nginx/SSL/RLS.
+- **F4 frontend completo (2026-08-16)**: páginas de Presupuestos, Deudas, Ahorros y Recurrentes; rediseño completo según los mockups «Fondo» (tokens claro/oscuro, sidebar, captura por pasos, donuts); cache de 2 min y prefetch al pasar el cursor.
+- **Categorías, widgets y Configuración (2026-08-17)** — migración **004**: columna `categorias.tipo` (`gasto`|`ingreso`|`ambos`), 18 categorías de gasto y 7 de ingreso, `Transporte` → `Transporte y vehiculo` (la migración arrastra los movimientos, porque la columna es TEXT sin FK). Widgets nuevos de últimos ingresos y tendencia de saldo a 6 meses, ambos dentro de la consulta única del dashboard. Pantalla `/configuracion` con CRUD de categorías propias y selector de tema. 43 tests.
+- Siguientes: Deudas/Préstamos (renombrar la sección y modelar los dos sentidos del flujo), F5 insights IA, F6 deploy nginx/SSL/RLS.
 
 **F6 — dominio**: el usuario usará un **subdominio de una web que ya posee** (no hace falta comprar dominio). Definir el subdominio y apuntar un A record a 150.136.170.92 antes de correr certbot.
 
