@@ -46,7 +46,19 @@ _RESUMEN_SQL = text("""
             AND t.fecha >= :desde AND t.fecha < :hasta
           GROUP BY t.categoria
         ) y
-      ), '[]'::json) AS por_categoria
+      ), '[]'::json) AS por_categoria,
+
+      -- Fuentes de ingreso del mes: alimentan el origen del diagrama de flujo
+      COALESCE((
+        SELECT json_agg(z ORDER BY z.total DESC)
+        FROM (
+          SELECT i.categoria, SUM(i.monto) AS total, COUNT(*) AS n
+          FROM ingresos i
+          WHERE i.usuario_id = :uid AND i.categoria != 'Transferencia'
+            AND i.fecha >= :desde AND i.fecha < :hasta
+          GROUP BY i.categoria
+        ) z
+      ), '[]'::json) AS ingresos_por_categoria
 """)
 
 
@@ -73,6 +85,7 @@ async def resumen_dashboard(session: AsyncSession, usuario_id: int, anio: int, m
         "gastos_mes": fila.gastos,
         "ingresos_mes": fila.ingresos,
         "por_categoria": fila.por_categoria or [],
+        "ingresos_por_categoria": fila.ingresos_por_categoria or [],
     }
 
 
@@ -105,6 +118,15 @@ _CATEGORIAS_PORTABLE = text("""
     ORDER BY total DESC
 """)
 
+_CATEGORIAS_ING_PORTABLE = text("""
+    SELECT categoria, SUM(monto) AS total, COUNT(*) AS n
+    FROM ingresos
+    WHERE usuario_id = :uid AND categoria != 'Transferencia'
+      AND fecha >= :desde AND fecha < :hasta
+    GROUP BY categoria
+    ORDER BY total DESC
+""")
+
 
 async def _resumen_portable(
     session: AsyncSession, usuario_id: int, anio: int, mes: int, params: dict
@@ -124,6 +146,10 @@ async def _resumen_portable(
         {"categoria": r.categoria, "total": r.total, "n": r.n}
         for r in (await session.execute(_CATEGORIAS_PORTABLE, params)).all()
     ]
+    ingresos_por_categoria = [
+        {"categoria": r.categoria, "total": r.total, "n": r.n}
+        for r in (await session.execute(_CATEGORIAS_ING_PORTABLE, params)).all()
+    ]
     return {
         "periodo": {"anio": anio, "mes": mes},
         "saldo_total": sum(float(s["saldo"]) for s in saldos),
@@ -131,4 +157,5 @@ async def _resumen_portable(
         "gastos_mes": totales.gastos,
         "ingresos_mes": totales.ingresos,
         "por_categoria": por_categoria,
+        "ingresos_por_categoria": ingresos_por_categoria,
     }

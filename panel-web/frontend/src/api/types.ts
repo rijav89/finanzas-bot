@@ -37,6 +37,8 @@ export interface DashboardResumen {
   gastos_mes: number;
   ingresos_mes: number;
   por_categoria: CategoriaResumen[];
+  /** Fuentes de ingreso del mes (Sueldo, Freelance…), origen del diagrama de flujo. */
+  ingresos_por_categoria: CategoriaResumen[];
 }
 
 export interface Movimiento {

@@ -143,17 +143,20 @@ function GastoMes({ datos, className }: WidgetProps) {
 
 function Flujo({ datos, className }: WidgetProps) {
   const ingresos = Number(datos.ingresos_mes);
+  const gastos = Number(datos.gastos_mes);
+
+  // El subtítulo debe describir lo que el diagrama realmente muestra
+  const subtitulo =
+    ingresos === 0 && gastos > 0
+      ? `Sin ingresos este mes: los ${money(gastos)} salieron de tu saldo`
+      : ingresos > gastos
+        ? `De tus ${money(ingresos)} de ingresos, ahorraste ${money(ingresos - gastos)}`
+        : ingresos > 0
+          ? `Gastaste ${money(gastos - ingresos)} más de lo que ingresó este mes`
+          : "Cuando registres movimientos verás cómo se reparte tu plata";
+
   return (
-    <BentoCard
-      id="sankey"
-      titulo="Flujo del mes"
-      subtitulo={
-        ingresos > 0
-          ? `Cómo se reparten tus ${money(ingresos)} de ingresos`
-          : "Todavía no registraste ingresos este mes"
-      }
-      className={className}
-    >
+    <BentoCard id="sankey" titulo="Flujo del mes" subtitulo={subtitulo} className={className}>
       <div className="mt-4">
         <Suspense fallback={<div className="h-72 animate-pulse rounded-xl bg-card-soft" />}>
           <SankeyFlujo datos={datos} />

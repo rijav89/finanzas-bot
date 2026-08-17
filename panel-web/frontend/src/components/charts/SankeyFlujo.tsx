@@ -3,47 +3,72 @@ import { ResponsiveSankey } from "@nivo/sankey";
 import type { DashboardResumen } from "@/api/types";
 import { money } from "@/lib/money";
 
-/** Río de dinero: Ingresos → Ahorro/categorías. Colores por rol (tokens del sistema);
- *  el texto va siempre en tinta, nunca en color de serie. */
+/** Río de dinero del mes.
+ *
+ *  Izquierda: de dónde salió la plata — tus fuentes de ingreso reales (Sueldo,
+ *  Freelance…) y, si gastaste más de lo que entró, el "Saldo anterior" que cubre
+ *  la diferencia. Derecha: en qué se fue, más "Ahorro" si sobró.
+ *
+ *  Importante: Nivo calcula el valor de cada nodo sumando sus enlaces, así que
+ *  los nodos de origen deben sumar exactamente lo mismo que los de destino; si
+ *  no, una etiqueta termina mostrando un número que no le corresponde.
+ */
 export function SankeyFlujo({ datos }: { datos: DashboardResumen }) {
   const ingresos = Number(datos.ingresos_mes) || 0;
   const gastos = Number(datos.gastos_mes) || 0;
-  const restante = Math.max(ingresos - gastos, 0);
+  const ahorro = Math.max(ingresos - gastos, 0);
+  const delSaldo = Math.max(gastos - ingresos, 0); // lo que salió del acumulado
 
-  // Máximo 5 categorías + "Otros": más nodos hacen ilegible el diagrama
-  const top = [...datos.por_categoria]
+  // Destinos: hasta 5 categorías + "Otros gastos" agrupado, y el ahorro si sobró
+  const catsGasto = [...datos.por_categoria]
     .sort((a, b) => Number(b.total) - Number(a.total))
     .slice(0, 5);
-  const resto = gastos - top.reduce((s, c) => s + Number(c.total), 0);
+  const restoGasto = gastos - catsGasto.reduce((s, c) => s + Number(c.total), 0);
 
-  const nodes = [
-    { id: "Ingresos" },
-    ...(restante > 0.005 ? [{ id: "Ahorro" }] : []),
-    ...top.map((c) => ({ id: c.categoria })),
-    ...(resto > 0.005 ? [{ id: "Otros" }] : []),
+  const destinos: { id: string; valor: number }[] = [
+    ...(ahorro > 0.005 ? [{ id: "Ahorro", valor: ahorro }] : []),
+    ...catsGasto.map((c) => ({ id: c.categoria, valor: Number(c.total) })),
+    ...(restoGasto > 0.005 ? [{ id: "Otros gastos", valor: restoGasto }] : []),
   ];
 
-  const links = [
-    ...(restante > 0.005
-      ? [{ source: "Ingresos", target: "Ahorro", value: restante }]
-      : []),
-    ...top.map((c) => ({ source: "Ingresos", target: c.categoria, value: Number(c.total) })),
-    ...(resto > 0.005 ? [{ source: "Ingresos", target: "Otros", value: resto }] : []),
+  // Orígenes: fuentes de ingreso reales + saldo previo si hizo falta
+  const fuentes = [...(datos.ingresos_por_categoria ?? [])]
+    .map((c) => ({ id: etiquetaFuente(c.categoria), valor: Number(c.total) }))
+    .filter((f) => f.valor > 0.005)
+    .sort((a, b) => b.valor - a.valor);
+
+  const origenes = [
+    ...fuentes,
+    ...(delSaldo > 0.005 ? [{ id: "Saldo anterior", valor: delSaldo }] : []),
   ];
 
-  if (links.length === 0) {
+  if (origenes.length === 0 || destinos.length === 0) {
     return (
-      <p className="py-16 text-center text-sm text-ink-3">
-        Aún no hay ingresos ni gastos este mes.
+      <p className="py-20 text-center text-sm text-ink-3">
+        Cuando registres movimientos verás acá cómo se reparte tu plata.
       </p>
     );
   }
+
+  // Reparte cada origen entre los destinos en proporción, para que el total cuadre
+  const totalOrigen = origenes.reduce((s, o) => s + o.valor, 0);
+  const links = origenes.flatMap((o) =>
+    destinos
+      .map((d) => ({
+        source: o.id,
+        target: d.id,
+        value: (d.valor * o.valor) / totalOrigen,
+      }))
+      .filter((l) => l.value > 0.005),
+  );
+
+  const nodes = [...origenes.map((o) => ({ id: o.id })), ...destinos.map((d) => ({ id: d.id }))];
 
   return (
     <div className="h-72 sm:h-80">
       <ResponsiveSankey
         data={{ nodes, links }}
-        margin={{ top: 8, right: 110, bottom: 8, left: 84 }}
+        margin={{ top: 8, right: 116, bottom: 8, left: 106 }}
         align="justify"
         colors={[
           "var(--s1)", "var(--s7)", "var(--s2)", "var(--s3)",
@@ -73,6 +98,11 @@ export function SankeyFlujo({ datos }: { datos: DashboardResumen }) {
       />
     </div>
   );
+}
+
+/** 'Ingreso' es el valor por defecto del bot: como etiqueta suelta no dice nada. */
+function etiquetaFuente(categoria: string | null): string {
+  return !categoria || categoria === "Ingreso" ? "Otros ingresos" : categoria;
 }
 
 function Tooltip({ titulo, valor }: { titulo: string; valor: number }) {
