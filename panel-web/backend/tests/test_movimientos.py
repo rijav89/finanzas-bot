@@ -89,6 +89,22 @@ async def test_dashboard_saldo_historico_y_categorias(cliente, datos):
     assert cat["Comida"] == 250
 
 
+def test_query_postgres_no_deja_parametros_sin_sustituir():
+    """La suite corre en SQLite, que toma la rama portable: la consulta de
+    PostgreSQL nunca se ejecuta acá. Este chequeo cubre el modo silencioso en que
+    falla — `text()` no reconoce un bind seguido de ':', así que `:param::date`
+    llega literal a la base y revienta recién en producción."""
+    import re
+
+    from app.analytics.saldos import _RESUMEN_SQL
+
+    reconocidos = set(_RESUMEN_SQL._bindparams)
+    assert reconocidos == {"uid", "desde", "hasta", "tend_desde"}
+
+    en_el_texto = set(re.findall(r"(?<!:):([a-z_]+)", _RESUMEN_SQL.text))
+    assert en_el_texto <= reconocidos, f"parámetros sin sustituir: {en_el_texto - reconocidos}"
+
+
 async def test_dashboard_ultimos_ingresos_y_tendencia(cliente, datos):
     from app.analytics.saldos import MESES_TENDENCIA
 

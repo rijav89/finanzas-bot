@@ -89,8 +89,12 @@ _RESUMEN_SQL = text("""
                              WHERE c.usuario_id = :uid AND c.activa AND t.fecha < m.corte), 0)
                  AS saldo
           FROM (
+            -- CAST y no la forma corta con doble dos-puntos: text() no reconoce
+            -- un bind seguido de ':' y lo dejaría literal en la consulta.
             SELECT g AS mes, g + interval '1 month' AS corte
-            FROM generate_series(:tend_desde::date, :desde::date, interval '1 month') g
+            FROM generate_series(
+              CAST(:tend_desde AS date), CAST(:desde AS date), interval '1 month'
+            ) g
           ) m
         ) s
       ), '[]'::json) AS tendencia_saldo
