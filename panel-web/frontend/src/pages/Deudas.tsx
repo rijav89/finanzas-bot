@@ -9,6 +9,7 @@ import { BarraProgreso } from "@/components/ui/BarraProgreso";
 import { Boton } from "@/components/ui/Boton";
 import { Card, PageHeader } from "@/components/ui/Card";
 import { Hoja } from "@/components/ui/Hoja";
+import { Toggle } from "@/components/ui/Toggle";
 import { IconoTile } from "@/lib/iconos";
 import { money } from "@/lib/money";
 
@@ -27,15 +28,15 @@ export default function Deudas() {
 
   return (
     <>
-      <HeaderMovil titulo="Deudas" subtitulo="Lo que debés y lo que te deben" />
+      <HeaderMovil titulo="Deudas y préstamos" subtitulo="Lo que debés y lo que te deben" />
       <div className="hidden lg:block">
         <PageHeader
-          titulo="Deudas"
+          titulo="Deudas y préstamos"
           subtitulo="Lo que debés y lo que te deben"
           acciones={
             <Boton onClick={() => setCreando(true)}>
               <Plus size={18} />
-              Nueva deuda
+              Registrar
             </Boton>
           }
         />
@@ -87,7 +88,7 @@ export default function Deudas() {
 
           {/* Listas */}
           <Card padding="p-0">
-            <h2 className="px-5 py-4 font-semibold">Deudas que tenés</h2>
+            <h2 className="px-5 py-4 font-semibold">Lo que debés</h2>
             {debo.length === 0 ? (
               <Vacio texto="No tenés deudas activas. Cuando registres un préstamo o tarjeta aparecerá acá." />
             ) : (
@@ -100,7 +101,7 @@ export default function Deudas() {
           </Card>
 
           <Card padding="p-0">
-            <h2 className="px-5 py-4 font-semibold">Te deben</h2>
+            <h2 className="px-5 py-4 font-semibold">Lo que te deben</h2>
             {meDeben.length === 0 ? (
               <Vacio
                 icono
@@ -145,7 +146,7 @@ function FilaDeuda({ deuda, tono }: { deuda: Deuda; tono: "accent" | "good" }) {
           <p className="truncate font-semibold">{deuda.acreedor}</p>
           <p className="mt-0.5 truncate text-sm text-ink-2">
             {ETIQUETA_TIPO_DEUDA[deuda.tipo]}
-            {deuda.num_cuotas ? ` · ${deuda.num_cuotas} cuotas` : ""}
+            {deuda.num_cuotas ? ` · ${deuda.num_cuotas} cuotas` : " · sin cronograma"}
           </p>
           <BarraProgreso
             className="mt-2"
@@ -185,14 +186,31 @@ export function FormDeuda({ onCerrar }: { onCerrar: () => void }) {
   const [tipo, setTipo] = useState<TipoDeuda>("prestamo_recibido");
   const [acreedor, setAcreedor] = useState("");
   const [monto, setMonto] = useState("");
-  const [cuotas, setCuotas] = useState("1");
+  const [cuotas, setCuotas] = useState("3");
   const [inicio, setInicio] = useState(() => new Date().toLocaleDateString("sv-SE"));
   const [cuentaId, setCuentaId] = useState("");
+  // Entre personas lo normal es devolver de a poco, sin cronograma fijo
+  const [enCuotas, setEnCuotas] = useState(false);
+  const [desembolso, setDesembolso] = useState(true);
 
-  const valido = acreedor.trim() && Number(monto) > 0 && Number(cuotas) >= 1;
+  const esTarjeta = tipo === "tarjeta";
+  const presto = tipo === "prestamo_otorgado";
+  const conCuotas = esTarjeta || enCuotas;
+  const registraPlata = desembolso && !esTarjeta;
+
+  const valido =
+    acreedor.trim() &&
+    Number(monto) > 0 &&
+    (!conCuotas || Number(cuotas) >= 1) &&
+    (!registraPlata || cuentaId);
+
+  function cambiarTipo(t: TipoDeuda) {
+    setTipo(t);
+    if (t === "tarjeta") setDesembolso(false);
+  }
 
   return (
-    <Hoja titulo="Nueva deuda" onCerrar={onCerrar}>
+    <Hoja titulo={esTarjeta ? "Nueva tarjeta" : "Nuevo préstamo"} onCerrar={onCerrar}>
       <form
         onSubmit={(e) => {
           e.preventDefault();
@@ -202,8 +220,10 @@ export function FormDeuda({ onCerrar }: { onCerrar: () => void }) {
               tipo,
               acreedor: acreedor.trim(),
               monto_total: monto,
-              num_cuotas: Number(cuotas),
               fecha_inicio: inicio,
+              generar_cuotas: conCuotas,
+              registrar_desembolso: registraPlata,
+              ...(conCuotas ? { num_cuotas: Number(cuotas) } : {}),
               ...(cuentaId ? { cuenta_id: Number(cuentaId) } : {}),
             },
             { onSuccess: onCerrar },
@@ -218,7 +238,7 @@ export function FormDeuda({ onCerrar }: { onCerrar: () => void }) {
               <button
                 key={t}
                 type="button"
-                onClick={() => setTipo(t)}
+                onClick={() => cambiarTipo(t)}
                 aria-pressed={tipo === t}
                 className={`h-11 rounded-full px-4 text-sm font-medium transition-colors ${
                   tipo === t
@@ -234,11 +254,12 @@ export function FormDeuda({ onCerrar }: { onCerrar: () => void }) {
 
         <label className="block">
           <span className="mb-1.5 block text-sm font-medium">
-            {tipo === "prestamo_otorgado" ? "¿A quién le prestaste?" : "¿A quién le debés?"}
+            {presto ? "¿A quién le prestaste?" : esTarjeta ? "Tarjeta" : "¿Quién te prestó?"}
           </span>
           <input
             value={acreedor}
             onChange={(e) => setAcreedor(e.target.value)}
+            placeholder={esTarjeta ? "Visa BCP" : "Nombre de la persona"}
             maxLength={120}
             className="h-12 w-full rounded-xl bg-card-soft px-3.5 text-sm outline-none focus:ring-2 focus:ring-accent"
           />
@@ -246,9 +267,9 @@ export function FormDeuda({ onCerrar }: { onCerrar: () => void }) {
 
         <div className="grid grid-cols-2 gap-3">
           <label className="block">
-            <span className="mb-1.5 block text-sm font-medium">Monto total</span>
+            <span className="mb-1.5 block text-sm font-medium">Monto</span>
             <div className="flex items-center gap-2 rounded-xl bg-card-soft px-3.5 focus-within:ring-2 focus-within:ring-accent">
-              <span className="text-ink-3">$</span>
+              <span className="text-ink-3">S/</span>
               <input
                 inputMode="decimal"
                 value={monto}
@@ -259,6 +280,64 @@ export function FormDeuda({ onCerrar }: { onCerrar: () => void }) {
             </div>
           </label>
           <label className="block">
+            <span className="mb-1.5 block text-sm font-medium">Fecha</span>
+            <input
+              type="date"
+              value={inicio}
+              onChange={(e) => setInicio(e.target.value)}
+              className="h-12 w-full rounded-xl bg-card-soft px-3.5 text-sm outline-none [color-scheme:inherit] focus:ring-2 focus:ring-accent"
+            />
+          </label>
+        </div>
+
+        <label className="block">
+          <span className="mb-1.5 block text-sm font-medium">
+            {presto ? "Sale de la cuenta" : esTarjeta ? "Pagar desde" : "Entra a la cuenta"}
+          </span>
+          <select
+            value={cuentaId}
+            onChange={(e) => setCuentaId(e.target.value)}
+            className="h-12 w-full rounded-xl bg-card-soft px-3 text-sm outline-none focus:ring-2 focus:ring-accent"
+          >
+            <option value="">{registraPlata ? "Elegí una cuenta" : "Elegir después"}</option>
+            {(cuentas ?? []).map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.nombre}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        {!esTarjeta && (
+          <Interruptor
+            activo={desembolso}
+            onCambiar={setDesembolso}
+            titulo={presto ? "Ya entregaste la plata" : "Ya recibiste la plata"}
+            detalle={
+              desembolso
+                ? `Se registra el movimiento en la cuenta. No cuenta como ${
+                    presto ? "gasto" : "ingreso"
+                  }: la plata cambia de manos, no de dueño.`
+                : "La deuda queda anotada, pero el saldo de tus cuentas no se toca."
+            }
+          />
+        )}
+
+        {!esTarjeta && (
+          <Interruptor
+            activo={enCuotas}
+            onCambiar={setEnCuotas}
+            titulo="Devolución en cuotas fijas"
+            detalle={
+              enCuotas
+                ? "Se genera un cronograma con cuotas iguales desde la fecha indicada."
+                : "Se salda con los montos que registres, cuando se pueda."
+            }
+          />
+        )}
+
+        {conCuotas && (
+          <label className="block">
             <span className="mb-1.5 block text-sm font-medium">N.º de cuotas</span>
             <input
               inputMode="numeric"
@@ -267,42 +346,11 @@ export function FormDeuda({ onCerrar }: { onCerrar: () => void }) {
               className="h-12 w-full rounded-xl bg-card-soft px-3.5 text-sm outline-none focus:ring-2 focus:ring-accent tnum"
             />
           </label>
-        </div>
-
-        <div className="grid grid-cols-2 gap-3">
-          <label className="block">
-            <span className="mb-1.5 block text-sm font-medium">Primera cuota</span>
-            <input
-              type="date"
-              value={inicio}
-              onChange={(e) => setInicio(e.target.value)}
-              className="h-12 w-full rounded-xl bg-card-soft px-3.5 text-sm outline-none [color-scheme:inherit] focus:ring-2 focus:ring-accent"
-            />
-          </label>
-          <label className="block">
-            <span className="mb-1.5 block text-sm font-medium">Pagar desde</span>
-            <select
-              value={cuentaId}
-              onChange={(e) => setCuentaId(e.target.value)}
-              className="h-12 w-full rounded-xl bg-card-soft px-3 text-sm outline-none focus:ring-2 focus:ring-accent"
-            >
-              <option value="">Elegir al pagar</option>
-              {(cuentas ?? []).map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.nombre}
-                </option>
-              ))}
-            </select>
-          </label>
-        </div>
-
-        <p className="text-sm text-ink-3">
-          Se generará el cronograma con cuotas iguales desde la fecha indicada.
-        </p>
+        )}
 
         {crear.isError && (
           <p role="alert" className="text-sm font-medium text-bad-ink">
-            No se pudo crear la deuda.
+            No se pudo crear. Si marcaste que la plata ya se movió, elegí una cuenta.
           </p>
         )}
 
@@ -311,10 +359,32 @@ export function FormDeuda({ onCerrar }: { onCerrar: () => void }) {
             Cancelar
           </Boton>
           <Boton type="submit" className="flex-[2]" disabled={!valido || crear.isPending}>
-            {crear.isPending ? "Creando…" : "Crear deuda"}
+            {crear.isPending ? "Guardando…" : "Guardar"}
           </Boton>
         </div>
       </form>
     </Hoja>
+  );
+}
+
+function Interruptor({
+  activo,
+  onCambiar,
+  titulo,
+  detalle,
+}: {
+  activo: boolean;
+  onCambiar: (v: boolean) => void;
+  titulo: string;
+  detalle: string;
+}) {
+  return (
+    <div className="rounded-xl bg-card-soft p-3.5">
+      <div className="flex items-center gap-3">
+        <span className="flex-1 text-sm font-medium">{titulo}</span>
+        <Toggle activo={activo} onChange={onCambiar} etiqueta={titulo} />
+      </div>
+      <p className="mt-1.5 text-xs text-ink-3">{detalle}</p>
+    </div>
   );
 }

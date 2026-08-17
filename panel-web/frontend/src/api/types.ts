@@ -137,6 +137,8 @@ export interface Deuda {
   fecha_inicio: string;
   estado: "activa" | "pagada" | "cancelada";
   cuenta_id: number | null;
+  /** Préstamo entre personas: se salda con montos sueltos, sin cronograma. */
+  sin_cronograma: boolean;
   pagado: number;
   saldo_pendiente: number;
   porcentaje_pagado: number;
@@ -149,7 +151,9 @@ export interface Cuota {
   monto: number;
   vence_en: string;
   pagada: boolean;
+  /** Solo uno de los dos: pagar genera un gasto, cobrar genera un ingreso. */
   transaccion_id: number | null;
+  ingreso_id: number | null;
 }
 
 export interface DeudasResp {

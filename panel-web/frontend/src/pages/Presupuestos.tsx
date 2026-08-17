@@ -51,9 +51,12 @@ export default function Presupuestos() {
     setEditando(false);
   }
 
+  // tipo 'ambos' son las que no cuentan en totales (Transferencia, Prestamo):
+  // no tiene sentido presupuestarlas
   const disponibles = (categorias ?? [])
+    .filter((c) => c.tipo !== "ambos")
     .map((c) => c.nombre)
-    .filter((n) => n !== "Transferencia" && !(n in borrador));
+    .filter((n) => !(n in borrador));
 
   const consumido = data && data.total_limite > 0
     ? (data.total_gastado / data.total_limite) * 100

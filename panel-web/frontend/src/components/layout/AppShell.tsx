@@ -28,7 +28,7 @@ const NAV = [
   { to: "/movimientos", icono: WalletCards, etiqueta: "Movimientos" },
   { to: "/cuentas", icono: Wallet, etiqueta: "Cuentas" },
   { to: "/presupuestos", icono: Target, etiqueta: "Presupuestos" },
-  { to: "/deudas", icono: CreditCard, etiqueta: "Deudas" },
+  { to: "/deudas", icono: CreditCard, etiqueta: "Deudas y préstamos", corto: "Deudas" },
   { to: "/ahorros", icono: PiggyBank, etiqueta: "Ahorros" },
   { to: "/recurrentes", icono: CalendarClock, etiqueta: "Recurrentes" },
 ];
@@ -137,15 +137,15 @@ export function AppShell({ children }: { children: ReactNode }) {
       {/* ── Tab bar (móvil) con FAB central ── */}
       <nav className="fixed inset-x-0 bottom-0 z-30 border-t border-hairline bg-card pb-[env(safe-area-inset-bottom)] lg:hidden">
         <div className="grid grid-cols-5 items-center">
-          {TAB_BAR.map(({ to, icono: Icono, etiqueta }) => (
-            <ItemTab key={to} to={to} Icono={Icono} etiqueta={etiqueta} />
+          {TAB_BAR.map((n) => (
+            <ItemTab key={n.to} to={n.to} Icono={n.icono} etiqueta={n.corto ?? n.etiqueta} />
           ))}
 
           {/* Hueco central: el FAB flota por encima */}
           <div aria-hidden />
 
-          {TAB_BAR_DER.map(({ to, icono: Icono, etiqueta }) => (
-            <ItemTab key={to} to={to} Icono={Icono} etiqueta={etiqueta} />
+          {TAB_BAR_DER.map((n) => (
+            <ItemTab key={n.to} to={n.to} Icono={n.icono} etiqueta={n.corto ?? n.etiqueta} />
           ))}
           <button
             onClick={() => setMasAbierto(true)}

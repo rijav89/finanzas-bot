@@ -59,6 +59,9 @@ class DeudaCrear(_Estricto):
     cuenta_id: int | None = None
     #: Si se envía, genera el cronograma de cuotas iguales automáticamente.
     generar_cuotas: bool = True
+    #: Mueve la plata en la cuenta al crear el préstamo. Se apaga cuando cargás una
+    #: deuda que ya venía de antes y su desembolso nunca pasó por esta app.
+    registrar_desembolso: bool = True
 
 
 class DeudaEditar(_Estricto):
@@ -69,7 +72,15 @@ class DeudaEditar(_Estricto):
 
 
 class PagarCuota(_Estricto):
-    """Al pagar se registra un gasto real; la cuenta puede diferir de la de la deuda."""
+    """Al saldar se registra el movimiento; la cuenta puede diferir de la de la deuda."""
+    cuenta_id: int | None = None
+    fecha: date | None = None
+
+
+class MovimientoDeuda(_Estricto):
+    """Pago o cobro suelto, para préstamos sin cronograma: el monto lo pone quien
+    registra, porque entre personas se devuelve de a poco y cuando se puede."""
+    monto: Decimal = Field(gt=0, le=MONTO_MAX)
     cuenta_id: int | None = None
     fecha: date | None = None
 

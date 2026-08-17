@@ -1,7 +1,9 @@
 """Queries analíticas del dashboard — raw SQL parametrizado.
 
 Reglas heredadas del bot:
-- 'Transferencia' se excluye de totales de gasto/ingreso, pero SÍ afecta saldos por cuenta.
+- 'Transferencia' y 'Prestamo' (ver `core.constantes.CATEGORIAS_SIN_TOTALES`) se
+  excluyen de los totales de gasto/ingreso, pero SÍ afectan los saldos por cuenta:
+  mueven plata sin que sea algo que ganaste ni gastaste.
 - Saldo por cuenta = saldo_inicial + SUM(ingresos) - SUM(gastos) HISTÓRICO
   (corrige el bug del bot que resetea el saldo cada mes).
 
@@ -30,11 +32,11 @@ _RESUMEN_SQL = text("""
       ), '[]'::json) AS saldos,
 
       COALESCE((SELECT SUM(t.monto) FROM transacciones t
-                WHERE t.usuario_id = :uid AND t.categoria != 'Transferencia'
+                WHERE t.usuario_id = :uid AND t.categoria NOT IN ('Transferencia', 'Prestamo')
                   AND t.fecha >= :desde AND t.fecha < :hasta), 0) AS gastos,
 
       COALESCE((SELECT SUM(i.monto) FROM ingresos i
-                WHERE i.usuario_id = :uid AND i.categoria != 'Transferencia'
+                WHERE i.usuario_id = :uid AND i.categoria NOT IN ('Transferencia', 'Prestamo')
                   AND i.fecha >= :desde AND i.fecha < :hasta), 0) AS ingresos,
 
       COALESCE((
@@ -42,7 +44,7 @@ _RESUMEN_SQL = text("""
         FROM (
           SELECT t.categoria, SUM(t.monto) AS total, COUNT(*) AS n
           FROM transacciones t
-          WHERE t.usuario_id = :uid AND t.categoria != 'Transferencia'
+          WHERE t.usuario_id = :uid AND t.categoria NOT IN ('Transferencia', 'Prestamo')
             AND t.fecha >= :desde AND t.fecha < :hasta
           GROUP BY t.categoria
         ) y
@@ -54,7 +56,7 @@ _RESUMEN_SQL = text("""
         FROM (
           SELECT i.categoria, SUM(i.monto) AS total, COUNT(*) AS n
           FROM ingresos i
-          WHERE i.usuario_id = :uid AND i.categoria != 'Transferencia'
+          WHERE i.usuario_id = :uid AND i.categoria NOT IN ('Transferencia', 'Prestamo')
             AND i.fecha >= :desde AND i.fecha < :hasta
           GROUP BY i.categoria
         ) z
@@ -67,7 +69,7 @@ _RESUMEN_SQL = text("""
           SELECT i.id, i.monto, i.categoria, i.descripcion, i.fecha, c.nombre AS cuenta
           FROM ingresos i
           LEFT JOIN cuentas c ON c.id = i.cuenta_id
-          WHERE i.usuario_id = :uid AND i.categoria != 'Transferencia'
+          WHERE i.usuario_id = :uid AND i.categoria NOT IN ('Transferencia', 'Prestamo')
           ORDER BY i.fecha DESC, i.id DESC
           LIMIT 5
         ) u
@@ -159,15 +161,15 @@ _SALDOS_PORTABLE = text("""
 _TOTALES_PORTABLE = text("""
     SELECT
       COALESCE((SELECT SUM(monto) FROM transacciones WHERE usuario_id = :uid
-                AND categoria != 'Transferencia' AND fecha >= :desde AND fecha < :hasta), 0) AS gastos,
+                AND categoria NOT IN ('Transferencia', 'Prestamo') AND fecha >= :desde AND fecha < :hasta), 0) AS gastos,
       COALESCE((SELECT SUM(monto) FROM ingresos WHERE usuario_id = :uid
-                AND categoria != 'Transferencia' AND fecha >= :desde AND fecha < :hasta), 0) AS ingresos
+                AND categoria NOT IN ('Transferencia', 'Prestamo') AND fecha >= :desde AND fecha < :hasta), 0) AS ingresos
 """)
 
 _CATEGORIAS_PORTABLE = text("""
     SELECT categoria, SUM(monto) AS total, COUNT(*) AS n
     FROM transacciones
-    WHERE usuario_id = :uid AND categoria != 'Transferencia'
+    WHERE usuario_id = :uid AND categoria NOT IN ('Transferencia', 'Prestamo')
       AND fecha >= :desde AND fecha < :hasta
     GROUP BY categoria
     ORDER BY total DESC
@@ -176,7 +178,7 @@ _CATEGORIAS_PORTABLE = text("""
 _CATEGORIAS_ING_PORTABLE = text("""
     SELECT categoria, SUM(monto) AS total, COUNT(*) AS n
     FROM ingresos
-    WHERE usuario_id = :uid AND categoria != 'Transferencia'
+    WHERE usuario_id = :uid AND categoria NOT IN ('Transferencia', 'Prestamo')
       AND fecha >= :desde AND fecha < :hasta
     GROUP BY categoria
     ORDER BY total DESC
@@ -186,7 +188,7 @@ _ULTIMOS_ING_PORTABLE = text("""
     SELECT i.id, i.monto, i.categoria, i.descripcion, i.fecha, c.nombre AS cuenta
     FROM ingresos i
     LEFT JOIN cuentas c ON c.id = i.cuenta_id
-    WHERE i.usuario_id = :uid AND i.categoria != 'Transferencia'
+    WHERE i.usuario_id = :uid AND i.categoria NOT IN ('Transferencia', 'Prestamo')
     ORDER BY i.fecha DESC, i.id DESC
     LIMIT 5
 """)

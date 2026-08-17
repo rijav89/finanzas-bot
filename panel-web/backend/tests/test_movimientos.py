@@ -89,7 +89,7 @@ async def test_dashboard_saldo_historico_y_categorias(cliente, datos):
     assert cat["Comida"] == 250
 
 
-def test_query_postgres_no_deja_parametros_sin_sustituir():
+async def test_query_postgres_no_deja_parametros_sin_sustituir():
     """La suite corre en SQLite, que toma la rama portable: la consulta de
     PostgreSQL nunca se ejecuta acá. Este chequeo cubre el modo silencioso en que
     falla — `text()` no reconoce un bind seguido de ':', así que `:param::date`

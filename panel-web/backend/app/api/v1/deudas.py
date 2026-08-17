@@ -6,14 +6,22 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.deps import UsuarioActual, get_current_user, get_db, get_db_lectura, require_csrf
-from app.models import CuotaDeuda, Deuda, Transaccion
+from app.models import CuotaDeuda, Deuda, Ingreso, Transaccion
 from app.schemas.common import ok
-from app.schemas.modulos import DeudaCrear, DeudaEditar, PagarCuota
+from app.schemas.modulos import DeudaCrear, DeudaEditar, MovimientoDeuda, PagarCuota
 from app.services.movimientos import cuenta_propia
 
 router = APIRouter(prefix="/deudas", tags=["deudas"], dependencies=[Depends(require_csrf)])
 
 CENTAVO = Decimal("0.01")
+
+#: Un préstamo entre personas no es ingreso ni gasto: la plata cambia de manos, no de
+#: dueño. Con esta categoría el movimiento afecta el saldo pero queda fuera de los
+#: totales del mes, igual que una transferencia.
+CATEGORIA_PRESTAMO = "Prestamo"
+#: La tarjeta sigue contando como gasto: sus compras ya se registraron una a una y
+#: el tratamiento de créditos en cuotas quedó pendiente de decidir.
+CATEGORIA_TARJETA = "Finanzas"
 
 
 def _cronograma(total: Decimal, n: int, inicio: date) -> list[tuple[int, Decimal, date]]:
@@ -35,12 +43,73 @@ def _cronograma(total: Decimal, n: int, inicio: date) -> list[tuple[int, Decimal
     return cuotas
 
 
-async def _resumen(db: AsyncSession, deuda: Deuda) -> dict:
-    pagado = await db.scalar(
+def _sale_de_mi_cuenta(tipo: str, *, momento: str) -> bool:
+    """Dirección del dinero en cada momento del préstamo.
+
+        momento      | me prestaron        | yo presté
+        -------------|---------------------|---------------------
+        desembolso   | entra               | sale
+        saldar       | sale (devuelvo)     | entra (me devuelven)
+    """
+    if momento == "desembolso":
+        return tipo == "prestamo_otorgado"
+    return tipo != "prestamo_otorgado"
+
+
+async def _mover_plata(
+    db: AsyncSession,
+    usuario_id: int,
+    deuda: Deuda,
+    monto: Decimal,
+    cuenta_id: int,
+    fecha: date | None,
+    *,
+    momento: str,
+    descripcion: str,
+) -> tuple[int | None, int | None]:
+    """Registra el movimiento en la cuenta y devuelve (transaccion_id, ingreso_id)."""
+    categoria = CATEGORIA_TARJETA if deuda.tipo == "tarjeta" else CATEGORIA_PRESTAMO
+    cuando = datetime.combine(fecha or date.today(), time(12, 0))
+
+    if _sale_de_mi_cuenta(deuda.tipo, momento=momento):
+        mov = Transaccion(
+            usuario_id=usuario_id,
+            monto=monto,
+            categoria=categoria,
+            descripcion=descripcion,
+            medio="Préstamo",
+            cuenta_id=cuenta_id,
+            fecha=cuando,
+        )
+        db.add(mov)
+        await db.flush()
+        return mov.id, None
+
+    mov = Ingreso(
+        usuario_id=usuario_id,
+        monto=monto,
+        categoria=categoria,
+        descripcion=descripcion,
+        cuenta_id=cuenta_id,
+        fecha=cuando,
+    )
+    db.add(mov)
+    await db.flush()
+    return None, mov.id
+
+
+async def _pagado(db: AsyncSession, deuda_id: int) -> Decimal:
+    """Cuánto se saldó ya, sumando cuotas pagadas y devoluciones sueltas por igual."""
+    total = await db.scalar(
         select(func.coalesce(func.sum(CuotaDeuda.monto), 0)).where(
-            CuotaDeuda.deuda_id == deuda.id, CuotaDeuda.pagada.is_(True)
+            CuotaDeuda.deuda_id == deuda_id, CuotaDeuda.pagada.is_(True)
         )
     )
+    return Decimal(str(total or 0))
+
+
+async def _resumen(db: AsyncSession, deuda: Deuda) -> dict:
+    pagado = await _pagado(db, deuda.id)
     pendientes = await db.scalar(
         select(func.count()).where(
             CuotaDeuda.deuda_id == deuda.id, CuotaDeuda.pagada.is_(False)
@@ -64,6 +133,8 @@ async def _resumen(db: AsyncSession, deuda: Deuda) -> dict:
         "fecha_inicio": deuda.fecha_inicio,
         "estado": deuda.estado,
         "cuenta_id": deuda.cuenta_id,
+        # Sin cronograma: préstamo entre personas, se salda con montos sueltos
+        "sin_cronograma": deuda.num_cuotas is None,
         "pagado": pagado_f,
         "saldo_pendiente": total - pagado_f,
         "porcentaje_pagado": round(pagado_f / total * 100, 1) if total else 0.0,
@@ -126,6 +197,7 @@ async def detalle(
             "vence_en": c.vence_en,
             "pagada": c.pagada,
             "transaccion_id": c.transaccion_id,
+            "ingreso_id": c.ingreso_id,
         }
         for c in cuotas
     ]
@@ -141,7 +213,7 @@ async def crear(
     if body.cuenta_id is not None:
         await cuenta_propia(db, user.usuario_id, body.cuenta_id)
 
-    datos = body.model_dump(exclude={"generar_cuotas"})
+    datos = body.model_dump(exclude={"generar_cuotas", "registrar_desembolso"})
     deuda = Deuda(usuario_id=user.usuario_id, **datos)
     db.add(deuda)
     await db.flush()
@@ -155,7 +227,93 @@ async def crear(
         )
         await db.flush()
 
+    # El desembolso es el momento en que la plata cambia de manos. Sin esto la deuda
+    # quedaba anotada pero el saldo de la cuenta no se enteraba.
+    if body.registrar_desembolso and body.tipo != "tarjeta":
+        if body.cuenta_id is None:
+            raise HTTPException(status_code=400, detail="cuenta_requerida_para_desembolso")
+        recibido = body.tipo == "prestamo_recibido"
+        await _mover_plata(
+            db,
+            user.usuario_id,
+            deuda,
+            body.monto_total,
+            body.cuenta_id,
+            body.fecha_inicio,
+            momento="desembolso",
+            descripcion=(
+                f"Préstamo de {deuda.acreedor}" if recibido else f"Préstamo a {deuda.acreedor}"
+            ),
+        )
+
     return ok(await _resumen(db, deuda))
+
+
+@router.post("/{deuda_id}/movimientos", status_code=201)
+async def registrar_movimiento(
+    deuda_id: int,
+    body: MovimientoDeuda,
+    user: UsuarioActual = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Devolución parcial o total de un préstamo sin cronograma.
+
+    Entre personas se devuelve de a poco y cuando se puede, así que el monto lo pone
+    quien registra. Cada movimiento queda como una fila de `cuotas_deuda` ya saldada,
+    para que el avance de la deuda se calcule igual que en la vía de cuotas.
+    """
+    deuda = await _propia(db, user.usuario_id, deuda_id)
+
+    cuenta_id = body.cuenta_id or deuda.cuenta_id
+    if cuenta_id is None:
+        raise HTTPException(status_code=400, detail="cuenta_requerida")
+    await cuenta_propia(db, user.usuario_id, cuenta_id)
+
+    pagado = await _pagado(db, deuda.id)
+    if pagado + body.monto > deuda.monto_total:
+        raise HTTPException(status_code=400, detail="monto_excede_lo_pendiente")
+
+    devuelto = deuda.tipo == "prestamo_otorgado"
+    transaccion_id, ingreso_id = await _mover_plata(
+        db,
+        user.usuario_id,
+        deuda,
+        body.monto,
+        cuenta_id,
+        body.fecha,
+        momento="saldar",
+        descripcion=(
+            f"{deuda.acreedor} te devolvió" if devuelto else f"Devolución a {deuda.acreedor}"
+        ),
+    )
+
+    ultimo = await db.scalar(
+        select(func.coalesce(func.max(CuotaDeuda.numero), 0)).where(CuotaDeuda.deuda_id == deuda.id)
+    )
+    db.add(
+        CuotaDeuda(
+            deuda_id=deuda.id,
+            numero=ultimo + 1,
+            monto=body.monto,
+            vence_en=body.fecha or date.today(),
+            pagada=True,
+            transaccion_id=transaccion_id,
+            ingreso_id=ingreso_id,
+        )
+    )
+    await db.flush()
+
+    if await _pagado(db, deuda.id) >= deuda.monto_total:
+        deuda.estado = "pagada"
+    await db.flush()
+
+    return ok(
+        {
+            "transaccion_id": transaccion_id,
+            "ingreso_id": ingreso_id,
+            "deuda": await _resumen(db, deuda),
+        }
+    )
 
 
 @router.patch("/{deuda_id}")
@@ -183,9 +341,11 @@ async def pagar_cuota(
     user: UsuarioActual = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Marca la cuota como pagada y registra el gasto asociado en la misma transacción.
+    """Marca la cuota como saldada y registra el movimiento en la misma transacción.
 
-    Si era la última pendiente, la deuda pasa a 'pagada'.
+    El movimiento sigue la dirección del préstamo: pagar una deuda propia genera un
+    gasto, cobrar una que otorgaste genera un ingreso. Si era la última pendiente, la
+    deuda pasa a 'pagada'.
     """
     deuda = await _propia(db, user.usuario_id, deuda_id)
 
@@ -204,24 +364,20 @@ async def pagar_cuota(
         raise HTTPException(status_code=400, detail="cuenta_requerida")
     await cuenta_propia(db, user.usuario_id, cuenta_id)
 
-    # Un préstamo otorgado que te devuelven es un ingreso, no un gasto:
-    # por ahora solo se registra el movimiento en el caso de deuda propia.
-    gasto = None
-    if deuda.tipo in ("prestamo_recibido", "tarjeta"):
-        gasto = Transaccion(
-            usuario_id=user.usuario_id,
-            monto=cuota.monto,
-            categoria="Finanzas",
-            descripcion=f"Cuota {numero}/{deuda.num_cuotas or '?'} — {deuda.acreedor}",
-            medio="Pago de deuda",
-            cuenta_id=cuenta_id,
-            fecha=datetime.combine(body.fecha or date.today(), time(12, 0)),
-        )
-        db.add(gasto)
-        await db.flush()
+    transaccion_id, ingreso_id = await _mover_plata(
+        db,
+        user.usuario_id,
+        deuda,
+        cuota.monto,
+        cuenta_id,
+        body.fecha,
+        momento="saldar",
+        descripcion=f"Cuota {numero}/{deuda.num_cuotas or '?'} — {deuda.acreedor}",
+    )
 
     cuota.pagada = True
-    cuota.transaccion_id = gasto.id if gasto else None
+    cuota.transaccion_id = transaccion_id
+    cuota.ingreso_id = ingreso_id
 
     quedan = await db.scalar(
         select(func.count()).where(
@@ -235,7 +391,8 @@ async def pagar_cuota(
     return ok(
         {
             "cuota": numero,
-            "transaccion_id": gasto.id if gasto else None,
+            "transaccion_id": transaccion_id,
+            "ingreso_id": ingreso_id,
             "deuda": await _resumen(db, deuda),
         }
     )

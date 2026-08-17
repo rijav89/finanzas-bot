@@ -1,12 +1,19 @@
-import { ArrowLeft, Check, Info, Pencil } from "lucide-react";
+import { ArrowLeft, Check, Info, Pencil, Plus } from "lucide-react";
+import { useState } from "react";
 import { Link, useParams } from "react-router-dom";
 
-import { useDeuda, usePagarCuota } from "@/api/queries";
-import { ETIQUETA_TIPO_DEUDA } from "@/api/types";
+import {
+  useCuentas,
+  useDeuda,
+  usePagarCuota,
+  useRegistrarMovimientoDeuda,
+} from "@/api/queries";
+import { ETIQUETA_TIPO_DEUDA, type Deuda } from "@/api/types";
 import { Badge } from "@/components/ui/Badge";
 import { BarraProgreso } from "@/components/ui/BarraProgreso";
 import { Boton } from "@/components/ui/Boton";
 import { Card, PageHeader } from "@/components/ui/Card";
+import { Hoja } from "@/components/ui/Hoja";
 import { cn } from "@/lib/cn";
 import { money } from "@/lib/money";
 
@@ -17,6 +24,7 @@ export default function DeudaDetalle() {
   const deudaId = Number(id);
   const { data, isPending, isError } = useDeuda(Number.isFinite(deudaId) ? deudaId : null);
   const pagar = usePagarCuota();
+  const [registrando, setRegistrando] = useState(false);
 
   if (isPending) return <div className="h-40 animate-pulse rounded-2xl bg-card" />;
   if (isError || !data) return <p className="text-sm text-bad-ink">No se encontró la deuda.</p>;
@@ -24,6 +32,9 @@ export default function DeudaDetalle() {
   const proxima = data.cuotas.find((c) => !c.pagada);
   const pagadas = data.cuotas.filter((c) => c.pagada).length;
   const alDia = !proxima || diasHasta(proxima.vence_en) >= 0;
+  // Cuando te devuelven un préstamo la plata entra: no es «pagar», es «cobrar»
+  const meDeben = data.tipo === "prestamo_otorgado";
+  const abierta = data.estado === "activa";
 
   return (
     <>
@@ -34,7 +45,7 @@ export default function DeudaDetalle() {
             {ETIQUETA_TIPO_DEUDA[data.tipo]}
             {data.num_cuotas && data.cuotas[0]
               ? ` · ${data.num_cuotas} cuotas de ${money(data.cuotas[0].monto)}`
-              : ""}
+              : " · se salda con montos sueltos"}
           </>
         }
         acciones={
@@ -43,15 +54,22 @@ export default function DeudaDetalle() {
               <Pencil size={16} />
               Editar
             </Boton>
-            {proxima && (
-              <Boton
-                disabled={pagar.isPending}
-                onClick={() => pagar.mutate({ deudaId, numero: proxima.numero })}
-              >
-                <Check size={17} />
-                Registrar pago
-              </Boton>
-            )}
+            {data.sin_cronograma
+              ? abierta && (
+                  <Boton onClick={() => setRegistrando(true)}>
+                    <Plus size={17} />
+                    {meDeben ? "Registrar cobro" : "Registrar pago"}
+                  </Boton>
+                )
+              : proxima && (
+                  <Boton
+                    disabled={pagar.isPending}
+                    onClick={() => pagar.mutate({ deudaId, numero: proxima.numero })}
+                  >
+                    <Check size={17} />
+                    {meDeben ? "Registrar cobro" : "Registrar pago"}
+                  </Boton>
+                )}
           </>
         }
       />
@@ -67,8 +85,14 @@ export default function DeudaDetalle() {
       {/* Resumen */}
       <Card className="mb-4">
         <div className="flex flex-wrap items-center gap-2">
-          <h2 className="font-semibold text-ink-2">Resumen de la deuda</h2>
-          <p className="ml-auto text-sm text-ink-3">Se cierra sola al pagar la última cuota</p>
+          <h2 className="font-semibold text-ink-2">
+            {meDeben ? "Resumen del préstamo" : "Resumen de la deuda"}
+          </h2>
+          <p className="ml-auto text-sm text-ink-3">
+            {data.sin_cronograma
+              ? "Se cierra sola al completar el monto"
+              : "Se cierra sola al pagar la última cuota"}
+          </p>
         </div>
 
         <div className="mt-4 flex flex-wrap items-end gap-x-10 gap-y-4">
@@ -79,13 +103,15 @@ export default function DeudaDetalle() {
             valor={money(data.saldo_pendiente)}
             clase="text-bad-ink"
           />
-          {data.cuotas[0] && (
+          {!data.sin_cronograma && data.cuotas[0] && (
             <Metrica etiqueta="Cuota" valor={money(data.cuotas[0].monto)} />
           )}
           <div className="min-w-[14rem] flex-1">
             <div className="mb-2 flex items-center justify-end gap-2">
               <span className="text-sm text-ink-2 tnum">
-                {pagadas} de {data.cuotas.length} cuotas pagadas
+                {data.sin_cronograma
+                  ? `${pagadas} movimiento${pagadas === 1 ? "" : "s"} registrado${pagadas === 1 ? "" : "s"}`
+                  : `${pagadas} de ${data.cuotas.length} cuotas pagadas`}
               </span>
               <Badge tono={data.estado === "pagada" ? "good" : alDia ? "good" : "warn"}>
                 {data.estado === "pagada" ? "Pagada" : alDia ? "Al día" : "Vencida"}
@@ -99,22 +125,32 @@ export default function DeudaDetalle() {
       {/* Cronograma */}
       <Card padding="p-0">
         <div className="flex flex-wrap items-center gap-2 px-5 py-4">
-          <h2 className="font-semibold">Cronograma de cuotas</h2>
+          <h2 className="font-semibold">
+            {data.sin_cronograma ? "Movimientos" : "Cronograma de cuotas"}
+          </h2>
           <p className="ml-auto inline-flex items-center gap-1.5 text-sm text-ink-3">
-            Cada pago se registra como gasto en tu historial
+            {data.tipo === "tarjeta"
+              ? "Cada pago se registra como gasto en tu historial"
+              : "Mueven tu saldo, pero no cuentan como ingreso ni gasto del mes"}
             <Info size={14} />
           </p>
         </div>
 
         {data.cuotas.length === 0 ? (
-          <p className="px-5 pb-8 text-sm text-ink-3">Esta deuda no tiene cuotas programadas.</p>
+          <p className="px-5 pb-8 text-sm text-ink-3">
+            {data.sin_cronograma
+              ? `Todavía no registraste ningún ${meDeben ? "cobro" : "pago"}.`
+              : "Esta deuda no tiene cuotas programadas."}
+          </p>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full min-w-[46rem] text-sm">
               <thead>
                 <tr className="border-y border-hairline text-left text-ink-2">
-                  <th className="px-5 py-2.5 font-medium">Cuota</th>
-                  <th className="px-5 py-2.5 font-medium">Vencimiento</th>
+                  <th className="px-5 py-2.5 font-medium">{data.sin_cronograma ? "#" : "Cuota"}</th>
+                  <th className="px-5 py-2.5 font-medium">
+                    {data.sin_cronograma ? "Fecha" : "Vencimiento"}
+                  </th>
                   <th className="px-5 py-2.5 font-medium">Monto</th>
                   <th className="px-5 py-2.5 font-medium">Estado</th>
                   <th className="px-5 py-2.5 font-medium">Registrada como</th>
@@ -156,7 +192,7 @@ export default function DeudaDetalle() {
                       </td>
                       <td className="px-5 py-3.5 text-ink-2">
                         {c.pagada
-                          ? "Gasto · Finanzas"
+                          ? `${c.ingreso_id ? "Ingreso" : "Gasto"} · ${categoriaDe(data)}`
                           : esProxima
                             ? "Se registrará al pagar"
                             : "—"}
@@ -169,7 +205,7 @@ export default function DeudaDetalle() {
                             className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-accent px-3 text-sm font-semibold text-white transition-colors hover:bg-accent-hover disabled:opacity-50"
                           >
                             <Check size={15} />
-                            Pagar cuota
+                            {meDeben ? "Cobrar" : "Pagar"}
                           </button>
                         )}
                       </td>
@@ -187,7 +223,122 @@ export default function DeudaDetalle() {
           </p>
         )}
       </Card>
+
+      {registrando && (
+        <FormMovimiento
+          deuda={data}
+          onCerrar={() => setRegistrando(false)}
+        />
+      )}
     </>
+  );
+}
+
+/** La categoría con la que queda el movimiento en el historial. */
+function categoriaDe(deuda: Deuda): string {
+  return deuda.tipo === "tarjeta" ? "Finanzas" : "Prestamo";
+}
+
+function FormMovimiento({ deuda, onCerrar }: { deuda: Deuda; onCerrar: () => void }) {
+  const { data: cuentas } = useCuentas();
+  const registrar = useRegistrarMovimientoDeuda();
+  const meDeben = deuda.tipo === "prestamo_otorgado";
+
+  const [monto, setMonto] = useState(String(deuda.saldo_pendiente));
+  const [fecha, setFecha] = useState(() => new Date().toLocaleDateString("sv-SE"));
+  const [cuentaId, setCuentaId] = useState(deuda.cuenta_id ? String(deuda.cuenta_id) : "");
+
+  const valor = Number(monto);
+  const valido = valor > 0 && valor <= deuda.saldo_pendiente && (cuentaId || deuda.cuenta_id);
+
+  return (
+    <Hoja
+      titulo={meDeben ? `${deuda.acreedor} te devolvió` : `Devolución a ${deuda.acreedor}`}
+      onCerrar={onCerrar}
+    >
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          if (!valido) return;
+          registrar.mutate(
+            {
+              deudaId: deuda.id,
+              monto,
+              fecha,
+              ...(cuentaId ? { cuenta_id: Number(cuentaId) } : {}),
+            },
+            { onSuccess: onCerrar },
+          );
+        }}
+        className="space-y-4"
+      >
+        <label className="block">
+          <span className="mb-1.5 block text-sm font-medium">Monto</span>
+          <div className="flex items-center gap-2 rounded-xl bg-card-soft px-3.5 focus-within:ring-2 focus-within:ring-accent">
+            <span className="text-ink-3">S/</span>
+            <input
+              autoFocus
+              inputMode="decimal"
+              value={monto}
+              onChange={(e) => setMonto(e.target.value.replace(/[^\d.]/g, ""))}
+              className="h-14 min-w-0 flex-1 bg-transparent text-2xl font-bold outline-none tnum"
+            />
+          </div>
+          <span className="mt-1.5 block text-xs text-ink-3 tnum">
+            Pendiente: {money(deuda.saldo_pendiente)}
+          </span>
+        </label>
+
+        <div className="grid grid-cols-2 gap-3">
+          <label className="block">
+            <span className="mb-1.5 block text-sm font-medium">Fecha</span>
+            <input
+              type="date"
+              value={fecha}
+              onChange={(e) => setFecha(e.target.value)}
+              className="h-12 w-full rounded-xl bg-card-soft px-3.5 text-sm outline-none [color-scheme:inherit] focus:ring-2 focus:ring-accent"
+            />
+          </label>
+          <label className="block">
+            <span className="mb-1.5 block text-sm font-medium">
+              {meDeben ? "Entra a" : "Sale de"}
+            </span>
+            <select
+              value={cuentaId}
+              onChange={(e) => setCuentaId(e.target.value)}
+              className="h-12 w-full rounded-xl bg-card-soft px-3 text-sm outline-none focus:ring-2 focus:ring-accent"
+            >
+              <option value="">Elegí una cuenta</option>
+              {(cuentas ?? []).map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.nombre}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+
+        <p className="text-sm text-ink-3">
+          Mueve el saldo de la cuenta, pero no cuenta como{" "}
+          {meDeben ? "ingreso" : "gasto"} del mes: es plata que vuelve a su dueño.
+        </p>
+
+        {registrar.isError && (
+          <p role="alert" className="text-sm font-medium text-bad-ink">
+            No se pudo registrar. Revisá que el monto no supere lo pendiente.
+          </p>
+        )}
+
+        <div className="flex gap-3 pt-1">
+          <Boton type="button" variante="secundario" className="flex-1" onClick={onCerrar}>
+            Cancelar
+          </Boton>
+          <Boton type="submit" className="flex-[2]" disabled={!valido || registrar.isPending}>
+            {registrar.isPending ? "Guardando…" : "Registrar"}
+          </Boton>
+        </div>
+      </form>
+    </Hoja>
   );
 }
 

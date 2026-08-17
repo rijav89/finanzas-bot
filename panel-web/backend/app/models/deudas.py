@@ -41,6 +41,14 @@ class Deuda(Base):
 
 
 class CuotaDeuda(Base):
+    """Cada movimiento que salda parte de una deuda.
+
+    Con cronograma (crédito en cuotas) las filas se crean por adelantado y `vence_en`
+    es la fecha de vencimiento. Sin cronograma —préstamos entre personas, que es el
+    caso de uso decidido— cada fila se crea al momento de entregar o recibir la plata,
+    `numero` es solo el orden y `vence_en` la fecha en que se movió.
+    """
+
     __tablename__ = "cuotas_deuda"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
@@ -51,9 +59,13 @@ class CuotaDeuda(Base):
     monto: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
     vence_en: Mapped[date] = mapped_column(Date, nullable=False)
     pagada: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))
-    # Gasto creado al pagar la cuota (trazabilidad)
+    # Movimiento creado al saldar (trazabilidad). Solo uno de los dos: pagar una deuda
+    # propia genera un gasto; cobrar un préstamo que otorgaste genera un ingreso.
     transaccion_id: Mapped[int | None] = mapped_column(
         ForeignKey("transacciones.id", ondelete="SET NULL")
+    )
+    ingreso_id: Mapped[int | None] = mapped_column(
+        ForeignKey("ingresos.id", ondelete="SET NULL")
     )
 
     __table_args__ = (

@@ -18,7 +18,7 @@ _GASTADO_SQL = text("""
     SELECT categoria, SUM(monto) AS total
     FROM transacciones
     WHERE usuario_id = :uid
-      AND categoria != 'Transferencia'
+      AND categoria NOT IN ('Transferencia', 'Prestamo')
       AND fecha >= :desde AND fecha < :hasta
     GROUP BY categoria
 """)

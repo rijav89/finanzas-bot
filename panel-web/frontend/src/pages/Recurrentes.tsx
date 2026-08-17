@@ -268,7 +268,7 @@ function FormRecurrente({ onCerrar }: { onCerrar: () => void }) {
               className="h-12 w-full rounded-xl bg-card-soft px-3 text-sm outline-none focus:ring-2 focus:ring-accent"
             >
               {(categorias ?? [])
-                .filter((c) => c.nombre !== "Transferencia")
+                .filter((c) => c.tipo !== "ambos")
                 .map((c) => (
                   <option key={c.id} value={c.nombre}>
                     {c.nombre}

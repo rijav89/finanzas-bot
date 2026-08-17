@@ -8,6 +8,11 @@ from config import DB_CONFIG
 
 db_pool = ConnectionPool(conninfo=DB_CONFIG)
 
+# Categorías que mueven el saldo pero no son ingreso ni gasto: una transferencia
+# cambia la plata de cuenta y un préstamo la cambia de manos, no de dueño.
+# Debe coincidir con panel-web/backend/app/core/constantes.py
+CATEGORIAS_SIN_TOTALES = ("Transferencia", "Prestamo")
+
 def obtener_o_crear_usuario(telegram_id: int) -> int:
     with db_pool.connection() as conn:
         with conn.cursor() as cur:
@@ -185,7 +190,7 @@ def obtener_tendencia_gastos(usuario_id: int) -> dict:
             cur.execute("""
                 SELECT COALESCE(SUM(monto::numeric), 0) FROM transacciones 
                 WHERE usuario_id=%s AND EXTRACT(YEAR FROM fecha) = %s AND EXTRACT(MONTH FROM fecha) = %s
-                AND EXTRACT(DAY FROM fecha) <= %s AND categoria != 'Transferencia'
+                AND EXTRACT(DAY FROM fecha) <= %s AND categoria NOT IN ('Transferencia', 'Prestamo')
             """, (usuario_id, anio_actual, mes_actual, dia_actual))
             gasto_actual = cur.fetchone()[0]
 
@@ -193,7 +198,7 @@ def obtener_tendencia_gastos(usuario_id: int) -> dict:
             cur.execute("""
                 SELECT COALESCE(SUM(monto::numeric), 0) FROM transacciones 
                 WHERE usuario_id=%s AND EXTRACT(YEAR FROM fecha) = %s AND EXTRACT(MONTH FROM fecha) = %s
-                AND EXTRACT(DAY FROM fecha) <= %s AND categoria != 'Transferencia'
+                AND EXTRACT(DAY FROM fecha) <= %s AND categoria NOT IN ('Transferencia', 'Prestamo')
             """, (usuario_id, anio_pasado, mes_pasado, dia_actual))
             gasto_pasado = cur.fetchone()[0]
 
@@ -209,7 +214,7 @@ def obtener_tendencia_gastos(usuario_id: int) -> dict:
                     COALESCE(SUM(monto::numeric), 0)
                 FROM transacciones
                 WHERE usuario_id=%s AND EXTRACT(YEAR FROM fecha) = %s AND EXTRACT(MONTH FROM fecha) = %s
-                AND categoria != 'Transferencia'
+                AND categoria NOT IN ('Transferencia', 'Prestamo')
                 GROUP BY semana
                 ORDER BY semana
             """, (usuario_id, anio_actual, mes_actual))
@@ -239,7 +244,7 @@ def obtener_total_mes(usuario_id: int, cuenta_id=None) -> float:
                 query += " AND cuenta_id=%s"
                 params.append(cuenta_id)
             else:
-                query += " AND categoria != 'Transferencia'"
+                query += " AND categoria NOT IN ('Transferencia', 'Prestamo')"
                 
             cur.execute(query, tuple(params))
             total = cur.fetchone()[0]
@@ -272,7 +277,7 @@ def obtener_resumen_categorias(usuario_id: int) -> list:
                 FROM transacciones
                 WHERE usuario_id=%s
                   AND date_trunc('month', fecha) = date_trunc('month', NOW())
-                  AND categoria != 'Transferencia'
+                  AND categoria NOT IN ('Transferencia', 'Prestamo')
                 GROUP BY categoria
                 ORDER BY total DESC
                 """,
@@ -345,7 +350,7 @@ def obtener_total_ingresos_mes(usuario_id: int, cuenta_id=None) -> float:
                 query += " AND cuenta_id=%s"
                 params.append(cuenta_id)
             else:
-                query += " AND categoria != 'Transferencia'"
+                query += " AND categoria NOT IN ('Transferencia', 'Prestamo')"
                 
             cur.execute(query, tuple(params))
             total = cur.fetchone()[0]

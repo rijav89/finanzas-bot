@@ -213,6 +213,150 @@ async def test_pagar_cuota_crea_gasto_y_cierra_deuda(cliente, datos):
     assert r.status_code == 409
 
 
+async def _saldo_y_totales(cliente) -> tuple[float, float, float]:
+    d = (await cliente.get("/api/v1/dashboard/resumen")).json()["data"]
+    return float(d["saldo_total"]), float(d["gastos_mes"]), float(d["ingresos_mes"])
+
+
+async def test_prestamo_otorgado_sale_al_prestar_y_vuelve_al_cobrar(cliente, datos):
+    """El caso que antes no existía: prestás plata y te la devuelven."""
+    como(cliente, AUTH_UID_A)
+    await cliente.post(
+        "/api/v1/ingresos", json={"monto": "1000", "cuenta_id": datos["cuenta_a"]}
+    )
+    saldo0, gastos0, ingresos0 = await _saldo_y_totales(cliente)
+
+    r = await cliente.post(
+        "/api/v1/deudas",
+        json={
+            "tipo": "prestamo_otorgado",
+            "acreedor": "Ana",
+            "monto_total": "300",
+            "fecha_inicio": "2026-08-01",
+            "cuenta_id": datos["cuenta_a"],
+            "generar_cuotas": False,
+        },
+    )
+    assert r.status_code == 201
+    deuda_id = r.json()["data"]["id"]
+    assert r.json()["data"]["sin_cronograma"] is True
+
+    # Prestar saca la plata de la cuenta, pero no es un gasto tuyo
+    saldo1, gastos1, ingresos1 = await _saldo_y_totales(cliente)
+    assert saldo1 == saldo0 - 300
+    assert gastos1 == gastos0
+    assert ingresos1 == ingresos0
+
+    # Ana devuelve de a poco
+    r = await cliente.post(f"/api/v1/deudas/{deuda_id}/movimientos", json={"monto": "100"})
+    assert r.status_code == 201
+    assert r.json()["data"]["ingreso_id"] is not None
+    assert r.json()["data"]["transaccion_id"] is None
+    assert r.json()["data"]["deuda"]["saldo_pendiente"] == 200.0
+    assert r.json()["data"]["deuda"]["estado"] == "activa"
+
+    saldo2, gastos2, ingresos2 = await _saldo_y_totales(cliente)
+    assert saldo2 == saldo1 + 100
+    assert ingresos2 == ingresos0  # recuperar lo prestado no es un ingreso
+
+    # Al completar el total la deuda se cierra sola
+    r = await cliente.post(f"/api/v1/deudas/{deuda_id}/movimientos", json={"monto": "200"})
+    assert r.json()["data"]["deuda"]["estado"] == "pagada"
+
+    saldo3, _, _ = await _saldo_y_totales(cliente)
+    assert saldo3 == saldo0  # volviste al punto de partida
+
+
+async def test_prestamo_recibido_entra_al_recibir_y_sale_al_devolver(cliente, datos):
+    como(cliente, AUTH_UID_A)
+    saldo0, gastos0, ingresos0 = await _saldo_y_totales(cliente)
+
+    r = await cliente.post(
+        "/api/v1/deudas",
+        json={
+            "tipo": "prestamo_recibido",
+            "acreedor": "Luis",
+            "monto_total": "500",
+            "fecha_inicio": "2026-08-01",
+            "cuenta_id": datos["cuenta_a"],
+            "generar_cuotas": False,
+        },
+    )
+    deuda_id = r.json()["data"]["id"]
+
+    saldo1, _, ingresos1 = await _saldo_y_totales(cliente)
+    assert saldo1 == saldo0 + 500
+    assert ingresos1 == ingresos0  # que te presten no es plata que ganaste
+
+    r = await cliente.post(f"/api/v1/deudas/{deuda_id}/movimientos", json={"monto": "500"})
+    assert r.json()["data"]["transaccion_id"] is not None
+    assert r.json()["data"]["ingreso_id"] is None
+
+    saldo2, gastos2, _ = await _saldo_y_totales(cliente)
+    assert saldo2 == saldo0
+    assert gastos2 == gastos0  # devolver tampoco es un gasto
+
+
+async def test_deuda_sin_desembolso_no_toca_el_saldo(cliente, datos):
+    """Una deuda que venía de antes: se anota, pero su plata nunca pasó por acá."""
+    como(cliente, AUTH_UID_A)
+    saldo0, _, _ = await _saldo_y_totales(cliente)
+
+    await cliente.post(
+        "/api/v1/deudas",
+        json={
+            "tipo": "prestamo_recibido",
+            "acreedor": "Vieja",
+            "monto_total": "800",
+            "fecha_inicio": "2026-01-01",
+            "cuenta_id": datos["cuenta_a"],
+            "generar_cuotas": False,
+            "registrar_desembolso": False,
+        },
+    )
+    saldo1, _, _ = await _saldo_y_totales(cliente)
+    assert saldo1 == saldo0
+
+
+async def test_devolucion_no_puede_exceder_lo_pendiente(cliente, datos):
+    como(cliente, AUTH_UID_A)
+    r = await cliente.post(
+        "/api/v1/deudas",
+        json={
+            "tipo": "prestamo_otorgado",
+            "acreedor": "Ana",
+            "monto_total": "100",
+            "fecha_inicio": "2026-08-01",
+            "cuenta_id": datos["cuenta_a"],
+            "generar_cuotas": False,
+        },
+    )
+    deuda_id = r.json()["data"]["id"]
+
+    r = await cliente.post(f"/api/v1/deudas/{deuda_id}/movimientos", json={"monto": "150"})
+    assert r.status_code == 400
+
+
+async def test_no_registrar_movimiento_en_deuda_ajena(cliente, datos):
+    como(cliente, AUTH_UID_B)
+    r = await cliente.post(
+        "/api/v1/deudas",
+        json={
+            "tipo": "prestamo_otorgado",
+            "acreedor": "de B",
+            "monto_total": "100",
+            "fecha_inicio": "2026-08-01",
+            "cuenta_id": datos["cuenta_b"],
+            "generar_cuotas": False,
+        },
+    )
+    deuda_b = r.json()["data"]["id"]
+
+    como(cliente, AUTH_UID_A)
+    r = await cliente.post(f"/api/v1/deudas/{deuda_b}/movimientos", json={"monto": "10"})
+    assert r.status_code == 404
+
+
 async def test_no_ver_deuda_ajena(cliente, datos):
     como(cliente, AUTH_UID_B)
     r = await cliente.post(

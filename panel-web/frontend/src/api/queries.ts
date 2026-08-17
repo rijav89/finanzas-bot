@@ -223,11 +223,29 @@ export function useDeuda(id: number | null) {
 }
 
 export function useCrearDeuda() {
-  const qc = useQueryClient();
+  // Crear puede mover plata (el desembolso), así que se invalida todo lo financiero
+  const invalidar = useInvalidarFinanzas();
   return useMutation({
     mutationFn: (body: Record<string, unknown>) =>
       api("/deudas", { method: "POST", body }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["deudas"] }),
+    onSuccess: invalidar,
+  });
+}
+
+/** Devolución parcial o total de un préstamo sin cronograma. */
+export function useRegistrarMovimientoDeuda() {
+  const invalidar = useInvalidarFinanzas();
+  return useMutation({
+    mutationFn: ({
+      deudaId,
+      ...body
+    }: {
+      deudaId: number;
+      monto: string;
+      cuenta_id?: number;
+      fecha?: string;
+    }) => api(`/deudas/${deudaId}/movimientos`, { method: "POST", body }),
+    onSuccess: invalidar,
   });
 }
 
