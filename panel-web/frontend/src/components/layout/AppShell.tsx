@@ -19,6 +19,7 @@ import { NavLink } from "react-router-dom";
 
 import { prefetchRuta } from "@/api/prefetch";
 import { useLogout, useMe } from "@/api/queries";
+import { MenuCuenta, SelectorTema } from "@/components/layout/MenuCuenta";
 import { cn } from "@/lib/cn";
 import { useUiStore } from "@/stores/uiStore";
 
@@ -39,6 +40,7 @@ const TAB_BAR_DER = [NAV[4]];
 export function AppShell({ children }: { children: ReactNode }) {
   const abrirCaptura = useUiStore((s) => s.abrirCaptura);
   const [masAbierto, setMasAbierto] = useState(false);
+  const [menuAbierto, setMenuAbierto] = useState(false);
   const logout = useLogout();
   const { data: me } = useMe();
   const qc = useQueryClient();
@@ -85,24 +87,45 @@ export function AppShell({ children }: { children: ReactNode }) {
           ))}
         </nav>
 
-        {/* Pie: usuario */}
-        <div className="mt-auto flex items-center gap-3 px-2 pt-4">
-          <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-accent-soft text-xs font-bold text-accent-ink">
-            {iniciales}
-          </span>
-          <span className="min-w-0 flex-1">
-            <span className="block truncate text-sm font-semibold">
-              {me?.email?.split("@")[0] ?? "Mi cuenta"}
+        {/* Pie: usuario + ajustes */}
+        <div className="relative mt-auto pt-4">
+          {menuAbierto && (
+            <>
+              <div
+                className="fixed inset-0 z-40"
+                onClick={() => setMenuAbierto(false)}
+                aria-hidden
+              />
+              <div className="absolute bottom-full left-2 z-50 mb-2">
+                <MenuCuenta onCerrar={() => setMenuAbierto(false)} />
+              </div>
+            </>
+          )}
+
+          <div className="flex items-center gap-3 px-2">
+            <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-accent-soft text-xs font-bold text-accent-ink">
+              {iniciales}
             </span>
-            <span className="block truncate text-xs text-ink-3">{me?.email}</span>
-          </span>
-          <button
-            onClick={() => logout.mutate()}
-            aria-label="Cerrar sesión"
-            className="flex size-9 shrink-0 items-center justify-center rounded-lg text-ink-3 transition-colors hover:bg-card-soft hover:text-ink"
-          >
-            <Settings size={17} />
-          </button>
+            <span className="min-w-0 flex-1">
+              <span className="block truncate text-sm font-semibold">
+                {me?.email?.split("@")[0] ?? "Mi cuenta"}
+              </span>
+              <span className="block truncate text-xs text-ink-3">{me?.email}</span>
+            </span>
+            <button
+              onClick={() => setMenuAbierto((v) => !v)}
+              aria-label="Ajustes de la cuenta"
+              aria-expanded={menuAbierto}
+              className={cn(
+                "flex size-9 shrink-0 items-center justify-center rounded-lg transition-colors",
+                menuAbierto
+                  ? "bg-card-soft text-ink"
+                  : "text-ink-3 hover:bg-card-soft hover:text-ink",
+              )}
+            >
+              <Settings size={17} />
+            </button>
+          </div>
         </div>
       </aside>
 
@@ -182,14 +205,18 @@ export function AppShell({ children }: { children: ReactNode }) {
                   {etiqueta}
                 </NavLink>
               ))}
+            </nav>
+
+            <div className="mt-3 border-t border-hairline pt-3">
+              <SelectorTema />
               <button
                 onClick={() => logout.mutate()}
-                className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-[15px] font-medium text-ink-2"
+                className="mt-2 flex w-full items-center gap-3 rounded-xl px-3 py-3 text-[15px] font-medium text-ink-2"
               >
                 <LogOut size={19} />
-                Salir
+                Cerrar sesión
               </button>
-            </nav>
+            </div>
           </div>
         </div>
       )}
