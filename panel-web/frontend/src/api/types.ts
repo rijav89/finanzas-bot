@@ -93,6 +93,26 @@ export const CATEGORIAS_INGRESO = [
   "Reembolso", "Intereses", "Otros ingresos",
 ] as const;
 
+// ── Reportes ─────────────────────────────────────────────────────────────────
+
+export type AgrupacionReporte = "categoria" | "mes" | "cuenta";
+
+export interface FilaReporte {
+  clave: string;
+  gastos: number;
+  ingresos: number;
+  neto: number;
+  n: number;
+}
+
+export interface ReporteResp {
+  periodo: { desde: string; hasta: string };
+  group_by: AgrupacionReporte;
+  filtros: { tipo: string | null; categoria: string | null; cuenta_id: number | null };
+  filas: FilaReporte[];
+  totales: { gastos: number; ingresos: number; neto: number; n: number };
+}
+
 // ── Módulos F4 ───────────────────────────────────────────────────────────────
 
 export type Semaforo = "bien" | "atencion" | "critico" | "info";

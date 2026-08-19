@@ -2,6 +2,7 @@ import {
   Bell,
   CalendarClock,
   CreditCard,
+  FileBarChart,
   LayoutGrid,
   LogOut,
   Menu,
@@ -31,6 +32,7 @@ const NAV = [
   { to: "/deudas", icono: CreditCard, etiqueta: "Deudas y préstamos", corto: "Deudas" },
   { to: "/ahorros", icono: PiggyBank, etiqueta: "Ahorros" },
   { to: "/recurrentes", icono: CalendarClock, etiqueta: "Recurrentes" },
+  { to: "/reportes", icono: FileBarChart, etiqueta: "Reportes" },
 ];
 
 /** En la barra inferior del móvil entran dos a cada lado del FAB. */

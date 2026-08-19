@@ -20,6 +20,7 @@ from app.api.v1 import (
     perfil,
     presupuestos,
     recurrentes,
+    reportes,
 )
 from app.db.session import engine, engine_lectura
 from app.schemas.common import err
@@ -71,6 +72,7 @@ for _router in (
     recurrentes.router,
     perfil.router,
     insights.router,
+    reportes.router,
 ):
     app.include_router(_router, prefix="/api/v1")
 

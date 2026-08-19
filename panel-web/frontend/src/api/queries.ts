@@ -14,6 +14,7 @@ import type {
   MovimientosPage,
   PresupuestosResp,
   Recurrente,
+  ReporteResp,
 } from "./types";
 
 export function useMe() {
@@ -267,6 +268,32 @@ export function usePagarCuota() {
         body: cuenta_id ? { cuenta_id } : {},
       }),
     onSuccess: invalidar,
+  });
+}
+
+export interface FiltrosReporte {
+  desde: string;
+  hasta: string;
+  group_by?: "categoria" | "mes" | "cuenta";
+  tipo?: "gasto" | "ingreso";
+  categoria?: string;
+  cuenta_id?: number;
+}
+
+export function queryReporte(filtros: FiltrosReporte): string {
+  const qs = new URLSearchParams();
+  for (const [k, v] of Object.entries(filtros)) {
+    if (v !== undefined && v !== "") qs.set(k, String(v));
+  }
+  return qs.toString();
+}
+
+export function useReporte(filtros: FiltrosReporte) {
+  const qs = queryReporte(filtros);
+  return useQuery({
+    queryKey: ["reporte", qs],
+    queryFn: () => api<ReporteResp>(`/reportes/resumen?${qs}`),
+    staleTime: 60_000,
   });
 }
 

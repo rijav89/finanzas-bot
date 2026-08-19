@@ -14,6 +14,11 @@ const POR_RUTA: Record<string, { key: unknown[]; url: string }[]> = {
     { key: ["cuentas"], url: "/cuentas" },
   ],
   "/recurrentes": [{ key: ["recurrentes"], url: "/recurrentes" }],
+  // El reporte depende de los filtros, así que se precargan sus catálogos
+  "/reportes": [
+    { key: ["cuentas"], url: "/cuentas" },
+    { key: ["categorias", "todas", false], url: "/categorias" },
+  ],
   "/configuracion": [
     { key: ["categorias", "gasto", true], url: "/categorias?tipo=gasto&incluir_archivadas=true" },
   ],
