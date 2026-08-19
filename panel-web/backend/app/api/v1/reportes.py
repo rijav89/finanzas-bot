@@ -60,6 +60,28 @@ async def _armar(
 ) -> Response:
     _validar_rango(desde, hasta)
 
+    # La reserva se toma antes de la primera consulta: si se tomara al armar el
+    # archivo, un segundo pedido llegado mientras corren las queries se colaría.
+    try:
+        with export.reserva(usuario_id):
+            return await _generar(
+                db, usuario_id, formato, desde, hasta, group_by, tipo, categoria, cuenta_id
+            )
+    except export.ExportEnCurso:
+        raise HTTPException(status_code=409, detail="export_en_curso") from None
+
+
+async def _generar(
+    db: AsyncSession,
+    usuario_id: int,
+    formato: str,
+    desde: date,
+    hasta: date,
+    group_by: str,
+    tipo: str | None,
+    categoria: str | None,
+    cuenta_id: int | None,
+) -> Response:
     filtros = {"tipo": tipo, "categoria": categoria, "cuenta_id": cuenta_id}
     datos = await analitica.resumen(
         db, usuario_id, desde=desde, hasta=hasta, group_by=group_by, **filtros
@@ -68,8 +90,8 @@ async def _armar(
         db, usuario_id, desde=desde, hasta=hasta, **filtros
     )
 
-    # Un archivo por vez: armar dos en paralelo es el pico de memoria que puede
-    # tumbar la API en una máquina de 1 GB.
+    # Y un archivo por vez en todo el proceso, para que dos usuarios distintos no
+    # sumen sus picos de memoria en una máquina de 1 GB.
     try:
         await asyncio.wait_for(export.turno().acquire(), timeout=20)
     except asyncio.TimeoutError:

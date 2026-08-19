@@ -170,3 +170,68 @@ async def test_export_de_un_periodo_vacio_no_falla(cliente, datos):
     r = await cliente.get("/api/v1/reportes/export.pdf", params=vacio)
     assert r.status_code == 200
     assert r.content.startswith(b"%PDF-")
+
+
+# ── Un export a la vez por usuario ───────────────────────────────────────────
+
+async def test_dos_exports_a_la_vez_del_mismo_usuario_rechaza_el_segundo(cliente, datos):
+    """Pedir dos archivos juntos nunca es intencional: es doble clic o dos pestañas.
+    Se rechaza en el acto en vez de hacer cola, que se siente como que se colgó."""
+    import asyncio
+
+    await _sembrar(cliente, datos)
+
+    respuestas = await asyncio.gather(
+        cliente.get("/api/v1/reportes/export.xlsx", params=MES),
+        cliente.get("/api/v1/reportes/export.pdf", params=MES),
+    )
+    codigos = sorted(r.status_code for r in respuestas)
+    assert codigos == [200, 409]
+
+    rechazada = next(r for r in respuestas if r.status_code == 409)
+    assert rechazada.json()["error"] == "export_en_curso"
+
+
+async def test_la_reserva_se_libera_al_terminar(cliente, datos):
+    """Si el turno no se soltara, el usuario quedaría bloqueado para siempre."""
+    await _sembrar(cliente, datos)
+
+    for _ in range(3):
+        r = await cliente.get("/api/v1/reportes/export.xlsx", params=MES)
+        assert r.status_code == 200
+
+
+async def test_la_reserva_se_libera_aunque_el_export_falle(cliente, datos):
+    from app.services import export
+
+    como(cliente, AUTH_UID_A)
+    # Un rango inválido corta antes de reservar; uno válido con el armado roto, no
+    original = export.excel
+    export.excel = lambda *_: (_ for _ in ()).throw(RuntimeError("boom"))
+    try:
+        with pytest.raises(RuntimeError):
+            await cliente.get("/api/v1/reportes/export.xlsx", params=MES)
+    finally:
+        export.excel = original
+
+    assert (await cliente.get("/api/v1/reportes/export.xlsx", params=MES)).status_code == 200
+
+
+async def test_dos_usuarios_distintos_no_se_bloquean(cliente, datos):
+    """El límite es por usuario; el semáforo global solo los serializa."""
+    import asyncio
+
+    from tests.conftest import token_para
+
+    await _sembrar(cliente, datos)
+
+    async def pedir(uid: str):
+        return await cliente.get(
+            "/api/v1/reportes/export.xlsx",
+            params=MES,
+            cookies={"sb_access": token_para(uid)},
+        )
+
+    a, b = await asyncio.gather(pedir(AUTH_UID_A), pedir(AUTH_UID_B))
+    assert a.status_code == 200
+    assert b.status_code == 200

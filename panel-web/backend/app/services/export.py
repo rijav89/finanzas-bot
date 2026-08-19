@@ -5,11 +5,39 @@ archivos quedan en pocos cientos de kB, y streaming de verdad no valdría la
 complejidad; lo que sí importa con 350 MB de RAM es que no se armen dos a la vez.
 """
 import asyncio
+import contextlib
 from datetime import date, datetime
 from io import BytesIO
 
-#: Un export por vez en todo el proceso. El segundo espera o recibe 429.
+#: Un export por vez en todo el proceso. Protege la memoria del servidor frente a
+#: dos usuarios distintos: el segundo espera su turno o recibe 429.
 _turno = asyncio.Semaphore(1)
+
+#: Un export por usuario. Es otra cosa: acá no se hace cola, se rechaza. Pedir dos
+#: archivos a la vez nunca es intencional — son dos pestañas o un doble clic — y
+#: hacerlo esperar solo consigue que el usuario piense que se colgó.
+_generando: set[int] = set()
+
+
+class ExportEnCurso(Exception):
+    """El usuario ya tiene un archivo armándose."""
+
+
+@contextlib.contextmanager
+def reserva(usuario_id: int):
+    """Toma el turno del usuario o falla en el acto.
+
+    El chequeo y el alta pasan sin `await` en medio, así que en un event loop de un
+    solo hilo son atómicos: no hay ventana para que dos peticiones pasen juntas.
+    """
+    if usuario_id in _generando:
+        raise ExportEnCurso
+    _generando.add(usuario_id)
+    try:
+        yield
+    finally:
+        # También corre si el cliente aborta la descarga a mitad de camino
+        _generando.discard(usuario_id)
 
 MESES_ES = [
     "enero", "febrero", "marzo", "abril", "mayo", "junio",

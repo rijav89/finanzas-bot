@@ -1,7 +1,7 @@
 import { Download, FileSpreadsheet, FileText } from "lucide-react";
 import { useState } from "react";
 
-import { descargar } from "@/api/client";
+import { ApiError, descargar } from "@/api/client";
 import { queryReporte, useCategorias, useCuentas, useReporte, type FiltrosReporte } from "@/api/queries";
 import type { AgrupacionReporte } from "@/api/types";
 import { HeaderMovil } from "@/components/layout/AppShell";
@@ -70,6 +70,7 @@ export default function Reportes() {
   }
 
   async function bajar(formato: "xlsx" | "pdf") {
+    if (descargando) return; // doble clic: el guardia del servidor es el que manda
     setDescargando(formato);
     setErrorDescarga(null);
     try {
@@ -77,10 +78,8 @@ export default function Reportes() {
         `/reportes/export.${formato}?${queryReporte(filtros)}`,
         `finanzas.${formato}`,
       );
-    } catch {
-      setErrorDescarga(
-        "No se pudo generar el archivo. Si hay otra descarga en curso, esperá unos segundos.",
-      );
+    } catch (e) {
+      setErrorDescarga(mensajeDeError(e));
     } finally {
       setDescargando(null);
     }
@@ -295,6 +294,19 @@ export default function Reportes() {
       </p>
     </>
   );
+}
+
+/** Cada rechazo del servidor tiene una causa distinta y una espera distinta. */
+function mensajeDeError(e: unknown): string {
+  if (e instanceof ApiError) {
+    if (e.codigo === "export_en_curso")
+      return "Ya estás generando un archivo. Esperá a que termine ese antes de pedir otro.";
+    if (e.codigo === "export_ocupado")
+      return "El servidor está armando otro archivo en este momento. Probá de nuevo en unos segundos.";
+    if (e.codigo === "rango_demasiado_largo")
+      return "El rango es demasiado largo: el máximo son 5 años.";
+  }
+  return "No se pudo generar el archivo. Intentá de nuevo.";
 }
 
 /** Las claves de mes llegan como 'YYYY-MM' desde la base. */
