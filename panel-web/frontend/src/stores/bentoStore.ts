@@ -3,11 +3,10 @@ import { persist } from "zustand/middleware";
 
 export const WIDGETS_DEFAULT = [
   "saldo-total",
-  "gasto-mes",
+  "ingresos",
+  "gastos",
   "tendencia-saldo",
-  "ultimos-ingresos",
-  "sankey",
-  "categorias",
+  "ultimos-registros",
   "insights",
 ] as const;
 
@@ -26,7 +25,11 @@ export const useBentoStore = create<BentoState>()(
     }),
     {
       name: "finanzas-bento",
-      // Si agregamos widgets nuevos en el futuro, fusionar con el default
+      // v2 rehízo el tablero entero (flujo y categorías se fusionaron en ingresos y
+      // gastos): conservar el orden viejo dejaría las tarjetas nuevas al final.
+      version: 2,
+      migrate: () => ({ orden: [...WIDGETS_DEFAULT] }),
+      // Si más adelante se agrega un widget suelto, se fusiona con el orden guardado
       merge: (persisted, current) => {
         const p = persisted as Partial<BentoState> | undefined;
         const guardado = p?.orden ?? [];

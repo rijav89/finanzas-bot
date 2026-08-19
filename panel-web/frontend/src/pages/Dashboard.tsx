@@ -71,8 +71,10 @@ export default function Dashboard() {
             <Monitor size={19} />
           </span>
           <div className="min-w-0">
-            <p className="text-sm font-semibold">Tendencia de saldo y desglose por categoría</p>
-            <p className="text-sm text-ink-3">Esas dos tarjetas se ven en escritorio</p>
+            <p className="text-sm font-semibold">Tendencia de saldo</p>
+            <p className="text-sm text-ink-3">
+              La curva de 6 meses en grande se ve en escritorio
+            </p>
           </div>
         </div>
       )}

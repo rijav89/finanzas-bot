@@ -99,31 +99,48 @@ async def test_query_postgres_no_deja_parametros_sin_sustituir():
     from app.analytics.saldos import _RESUMEN_SQL
 
     reconocidos = set(_RESUMEN_SQL._bindparams)
-    assert reconocidos == {"uid", "desde", "hasta", "tend_desde"}
+    assert reconocidos == {"uid", "desde", "hasta", "tend_desde", "prev_desde"}
 
     en_el_texto = set(re.findall(r"(?<!:):([a-z_]+)", _RESUMEN_SQL.text))
     assert en_el_texto <= reconocidos, f"parámetros sin sustituir: {en_el_texto - reconocidos}"
 
 
-async def test_dashboard_ultimos_ingresos_y_tendencia(cliente, datos):
-    from app.analytics.saldos import MESES_TENDENCIA
+async def test_dashboard_ultimos_registros_mezcla_gastos_e_ingresos(cliente, datos):
+    from app.analytics.saldos import MESES_PROMEDIO, MESES_TENDENCIA
+
+    from datetime import date
+
+    hoy = date.today()
+    # Fechas explícitas: creados en el mismo instante, el orden dependería del id de
+    # cada tabla, que son secuencias distintas.
+    dia = lambda n: date(hoy.year, hoy.month, n).isoformat()  # noqa: E731
 
     como(cliente, AUTH_UID_A)
-    for monto, desc in (("1000", "sueldo"), ("300", "freelance")):
+    for monto, desc, d_ in (("1000", "sueldo", 2), ("300", "freelance", 6)):
         await cliente.post(
             "/api/v1/ingresos",
-            json={"monto": monto, "cuenta_id": datos["cuenta_a"], "descripcion": desc},
+            json={
+                "monto": monto, "cuenta_id": datos["cuenta_a"],
+                "descripcion": desc, "fecha": dia(d_),
+            },
         )
     await cliente.post(
         "/api/v1/gastos",
-        json={"monto": "200", "categoria": "Comida", "cuenta_id": datos["cuenta_a"]},
+        json={
+            "monto": "200", "categoria": "Comida", "cuenta_id": datos["cuenta_a"],
+            "descripcion": "almuerzo", "fecha": dia(9),
+        },
     )
 
     d = (await cliente.get("/api/v1/dashboard/resumen")).json()["data"]
 
-    ultimos = d["ultimos_ingresos"]
-    assert [i["descripcion"] for i in ultimos] == ["freelance", "sueldo"]  # más reciente primero
+    ultimos = d["ultimos_movimientos"]
+    assert [i["descripcion"] for i in ultimos] == ["almuerzo", "freelance", "sueldo"]
+    assert [i["tipo"] for i in ultimos] == ["gasto", "ingreso", "ingreso"]
     assert ultimos[0]["cuenta"] == "Principal"
+
+    # Sin meses anteriores cargados, el promedio es 0: la UI omite la pastilla
+    assert d["promedio_previos"] == {"gastos": 0.0, "ingresos": 0.0, "meses": MESES_PROMEDIO}
 
     tendencia = d["tendencia_saldo"]
     assert len(tendencia) == MESES_TENDENCIA

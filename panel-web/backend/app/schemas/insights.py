@@ -19,8 +19,8 @@ class InsightGenerado(BaseModel):
 
     tipo: TipoInsight
     severidad: Severidad
-    titulo: str = Field(min_length=3, max_length=90)
-    detalle: str = Field(min_length=10, max_length=320)
+    titulo: str = Field(min_length=3, max_length=52)
+    detalle: str = Field(min_length=10, max_length=110)
     categoria: str | None = Field(default=None, max_length=40)
     #: Cifra que sostiene el insight, ya formateada (ej. "S/ 450.00")
     metrica: str | None = Field(default=None, max_length=40)

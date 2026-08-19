@@ -32,14 +32,17 @@ Reglas:
 - Nada de obviedades ("gastaste plata este mes") ni de consejos genéricos de ahorro.
 - Si algo subió o bajó, decí cuánto y contra qué.
 - Escribí en español rioplatense neutro, en segunda persona, directo y sin moralizar.
+- Muy corto: el titulo es un renglon de hasta 52 caracteres y el detalle UNA sola frase
+  de hasta 110. Se leen en el celular, de reojo. Nada de subordinadas ni de repetir en
+  el detalle lo que ya dice el titulo.
 - severidad: 'critico' solo si hay riesgo real (presupuesto excedido, saldo en rojo,
   gastás más de lo que ingresa); 'atencion' si conviene mirarlo; 'info' para el resto.
 - Si los datos no dan para {maximo}, devolvé menos. Preferible poco y bueno.
 
 Respondé SOLO con JSON válido, sin markdown ni texto alrededor:
 {{"insights": [{{"tipo": "patron_gasto|alerta_presupuesto|tendencia|recomendacion",
-  "severidad": "info|atencion|critico", "titulo": "<máx 90 caracteres>",
-  "detalle": "<máx 320 caracteres>", "categoria": "<categoría o null>",
+  "severidad": "info|atencion|critico", "titulo": "<máx 52 caracteres>",
+  "detalle": "<una frase, máx 110 caracteres>", "categoria": "<categoría o null>",
   "metrica": "<cifra que lo sostiene, ej. S/ 450.00, o null>",
   "delta_pct": <número o null>}}]}}"""
 

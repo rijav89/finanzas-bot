@@ -134,6 +134,60 @@ export function LineaSaldo({ puntos }: { puntos: PuntoSaldo[] }) {
   );
 }
 
+/** Miniatura sin ejes ni interacción, para meter dentro de otra tarjeta.
+ *
+ *  En móvil no hay widget de tendencia, así que esta chispa dentro del saldo es la
+ *  única forma de ver si la línea sube o baja.
+ */
+export function MiniLinea({ puntos }: { puntos: PuntoSaldo[] }) {
+  if (puntos.length < 2) return null;
+
+  const valores = puntos.map((p) => Number(p.saldo));
+  const max = Math.max(...valores, 0);
+  const min = Math.min(...valores, 0);
+  const rango = max - min || 1;
+  const x = (i: number) => (i / (puntos.length - 1)) * 100;
+  const y = (v: number) => 94 - ((v - min) / rango) * 88;
+
+  const linea = valores.map((v, i) => `${i === 0 ? "M" : "L"} ${x(i)} ${y(v)}`).join(" ");
+
+  return (
+    <div className="mt-4">
+      <svg
+        viewBox="0 0 100 100"
+        preserveAspectRatio="none"
+        className="h-11 w-full"
+        role="img"
+        aria-label={`Saldo de los últimos ${puntos.length} meses`}
+      >
+        <defs>
+          <linearGradient id="grad-chispa" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="var(--accent)" stopOpacity="0.26" />
+            <stop offset="100%" stopColor="var(--accent)" stopOpacity="0" />
+          </linearGradient>
+        </defs>
+        <path d={`${linea} L 100 100 L 0 100 Z`} fill="url(#grad-chispa)" />
+        <path
+          d={linea}
+          fill="none"
+          stroke="var(--accent)"
+          strokeWidth="2"
+          strokeLinejoin="round"
+          strokeLinecap="round"
+          vectorEffect="non-scaling-stroke"
+        />
+      </svg>
+      <div className="mt-1 flex justify-between text-[10.5px] text-ink-3">
+        {puntos.map((p, i) => (
+          <span key={p.mes} className={i === puntos.length - 1 ? "font-semibold text-ink-2" : ""}>
+            {etiquetaMes(p.mes)}
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 /** 'YYYY-MM-DD' se parsea como UTC con `new Date`, y en Lima (UTC-5) eso corre la
  *  etiqueta al mes anterior. Por eso se arma la fecha a mano en hora local. */
 function etiquetaMes(iso: string): string {

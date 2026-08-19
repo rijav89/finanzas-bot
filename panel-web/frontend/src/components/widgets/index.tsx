@@ -1,33 +1,23 @@
-import {
-  AlertTriangle,
-  Check,
-  ChevronDown,
-  ChevronRight,
-  Sparkles,
-  TrendingUp,
-} from "lucide-react";
+import { AlertTriangle, Check, ChevronDown, ChevronRight, Sparkles, TrendingUp } from "lucide-react";
 import { lazy, Suspense, useState } from "react";
 import { Link } from "react-router-dom";
 
 import { useInsights, useMarcarInsight } from "@/api/queries";
-import type { DashboardResumen, SeveridadInsight } from "@/api/types";
+import type { DashboardResumen, MovimientoReciente, SeveridadInsight } from "@/api/types";
 import { BentoCard } from "@/components/bento/BentoCard";
-import { SERIES } from "@/components/charts/flujo";
+import { Desglose } from "@/components/charts/Desglose";
 import { Badge } from "@/components/ui/Badge";
-import { BarraProgreso } from "@/components/ui/BarraProgreso";
 import { cn } from "@/lib/cn";
 import { IconoTile } from "@/lib/iconos";
 import { money } from "@/lib/money";
+import { colorSerie } from "@/lib/series";
 import type { WidgetId } from "@/stores/bentoStore";
 
-const SankeyFlujo = lazy(() =>
-  import("@/components/charts/SankeyFlujo").then((m) => ({ default: m.SankeyFlujo })),
-);
 const LineaSaldo = lazy(() =>
   import("@/components/charts/LineaSaldo").then((m) => ({ default: m.LineaSaldo })),
 );
-const FlujoCompacto = lazy(() =>
-  import("@/components/charts/FlujoCompacto").then((m) => ({ default: m.FlujoCompacto })),
+const MiniLinea = lazy(() =>
+  import("@/components/charts/LineaSaldo").then((m) => ({ default: m.MiniLinea })),
 );
 
 export interface WidgetProps {
@@ -36,48 +26,79 @@ export interface WidgetProps {
   className?: string;
 }
 
-/** prioridad ≤ 2 se muestra en móvil; el resto vive en escritorio. */
+/** prioridad ≤ 2 se muestra en móvil; el resto vive en escritorio.
+ *  El orden es el de lectura de la plata: cuánto tengo, cuánto entró, cuánto salió. */
 export const REGISTRO: Record<
   WidgetId,
   { prioridad: number; span: string; Componente: (p: WidgetProps) => JSX.Element }
 > = {
-  "saldo-total": { prioridad: 1, span: "lg:col-span-3", Componente: SaldoTotal },
-  "gasto-mes": { prioridad: 2, span: "lg:col-span-3", Componente: GastoMes },
-  sankey: { prioridad: 2, span: "lg:col-span-4", Componente: Flujo },
-  "ultimos-ingresos": { prioridad: 2, span: "lg:col-span-2", Componente: UltimosIngresos },
-  insights: { prioridad: 2, span: "lg:col-span-6", Componente: Insights },
+  "saldo-total": { prioridad: 1, span: "lg:col-span-2", Componente: SaldoTotal },
+  ingresos: { prioridad: 2, span: "lg:col-span-2", Componente: Ingresos },
+  gastos: { prioridad: 2, span: "lg:col-span-2", Componente: Gastos },
   "tendencia-saldo": { prioridad: 3, span: "lg:col-span-4", Componente: Tendencia },
-  categorias: { prioridad: 3, span: "lg:col-span-2", Componente: Categorias },
+  "ultimos-registros": { prioridad: 2, span: "lg:col-span-2", Componente: UltimosRegistros },
+  insights: { prioridad: 2, span: "lg:col-span-6", Componente: Insights },
 };
 
-function SaldoTotal({ datos, className }: WidgetProps) {
-  const [abierto, setAbierto] = useState(true);
+/** Variación porcentual contra una referencia, o null si no hay con qué comparar. */
+function variacion(actual: number, referencia: number): number | null {
+  if (!referencia) return null;
+  return ((actual - referencia) / referencia) * 100;
+}
+
+function signo(n: number): string {
+  return n >= 0 ? "+" : "";
+}
+
+// ── 1 · Saldo total ──────────────────────────────────────────────────────────
+
+function SaldoTotal({ datos, variante, className }: WidgetProps) {
+  const [abierto, setAbierto] = useState(false);
   const saldo = Number(datos.saldo_total);
+  const puntos = datos.tendencia_saldo ?? [];
+
+  // El cierre del mes pasado es el penúltimo punto de la tendencia: sale gratis
+  const anterior = puntos.length >= 2 ? Number(puntos[puntos.length - 2].saldo) : null;
+  const delta = anterior !== null ? saldo - anterior : null;
+  const pct = anterior !== null ? variacion(saldo, anterior) : null;
+  const cuentas = datos.saldos_por_cuenta;
 
   return (
     <BentoCard id="saldo-total" titulo="Saldo total" className={className}>
       <div className="mt-2 flex flex-wrap items-center gap-3">
-        <p className="text-[2.5rem] font-bold leading-none tracking-tight tnum">
-          {money(saldo)}
-        </p>
-        {saldo >= 0 ? (
-          <Badge tono="good">Al día</Badge>
-        ) : (
-          <Badge tono="bad">En negativo</Badge>
+        <p className="text-[2.25rem] font-bold leading-none tracking-tight tnum">{money(saldo)}</p>
+        {pct !== null && (
+          <Badge tono={delta! >= 0 ? "good" : "bad"}>
+            {signo(pct)}
+            {pct.toFixed(1)}%
+          </Badge>
         )}
       </div>
 
-      {datos.saldos_por_cuenta.length > 0 && (
+      {delta !== null && (
+        <p className="mt-1.5 text-sm text-ink-2">
+          {money(Math.abs(delta))} {delta >= 0 ? "más" : "menos"} que al cierre del mes pasado
+        </p>
+      )}
+
+      {/* En escritorio esta curva ya está, en grande, en su propio widget */}
+      {variante === "compact" && puntos.length >= 2 && (
+        <Suspense fallback={<div className="mt-4 h-14 animate-pulse rounded-lg bg-card-soft" />}>
+          <MiniLinea puntos={puntos} />
+        </Suspense>
+      )}
+
+      {cuentas.length > 0 && (
         <>
           <div className="my-4 border-t border-hairline" />
-          {abierto && (
+          {(abierto || cuentas.length <= 2) && (
             <ul className="space-y-3">
-              {datos.saldos_por_cuenta.map((c, i) => (
+              {cuentas.map((c, i) => (
                 <li key={c.cuenta_id} className="flex items-center gap-3 text-[15px]">
                   <span
                     aria-hidden
                     className="size-2 shrink-0 rounded-full"
-                    style={{ background: SERIES[i % SERIES.length] }}
+                    style={{ background: colorSerie(i) }}
                   />
                   <span className="truncate text-ink-2">{c.nombre}</span>
                   <span className="ml-auto shrink-0 font-semibold tnum">
@@ -87,104 +108,102 @@ function SaldoTotal({ datos, className }: WidgetProps) {
               ))}
             </ul>
           )}
-          <button
-            onClick={() => setAbierto((v) => !v)}
-            aria-expanded={abierto}
-            className="mt-4 flex items-center gap-1 text-sm font-semibold text-accent"
-          >
-            {abierto ? "Ocultar desglose" : "Ver desglose"}
-            <ChevronDown size={16} className={cn("transition-transform", abierto && "rotate-180")} />
-          </button>
+          {cuentas.length > 2 && (
+            <button
+              onClick={() => setAbierto((v) => !v)}
+              aria-expanded={abierto}
+              className="mt-4 flex items-center gap-1 text-sm font-semibold text-accent"
+            >
+              {abierto ? "Ocultar desglose" : `Ver las ${cuentas.length} cuentas`}
+              <ChevronDown size={16} className={cn("transition-transform", abierto && "rotate-180")} />
+            </button>
+          )}
         </>
       )}
     </BentoCard>
   );
 }
 
-function GastoMes({ datos, className }: WidgetProps) {
-  const gastos = Number(datos.gastos_mes);
-  const ingresos = Number(datos.ingresos_mes);
-  const ratio = ingresos > 0 ? gastos / ingresos : null;
-  const pct = ratio !== null ? Math.round(ratio * 100) : 0;
+// ── 2 y 3 · Ingresos y gastos ────────────────────────────────────────────────
 
-  const tono = ratio === null ? "neutro" : ratio > 0.8 ? "bad" : ratio > 0.5 ? "warn" : "good";
+function nombreMes(datos: DashboardResumen): string {
+  const meses = [
+    "enero", "febrero", "marzo", "abril", "mayo", "junio",
+    "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre",
+  ];
+  return meses[datos.periodo.mes - 1];
+}
+
+function Ingresos({ datos, className }: WidgetProps) {
+  const total = Number(datos.ingresos_mes);
+  const pct = variacion(total, datos.promedio_previos?.ingresos ?? 0);
+  const ultimo = (datos.ultimos_movimientos ?? []).find((m) => m.tipo === "ingreso");
 
   return (
-    <BentoCard id="gasto-mes" titulo="Gastos del mes" className={className}>
+    <BentoCard id="ingresos" titulo={`Ingresos de ${nombreMes(datos)}`} className={className}>
       <div className="mt-2 flex flex-wrap items-center gap-3">
-        <p className="text-[2.5rem] font-bold leading-none tracking-tight tnum">{money(gastos)}</p>
-        {ratio !== null ? (
-          <Badge tono={tono}>{pct}% de tus ingresos</Badge>
-        ) : (
-          <Badge tono="neutro">Sin ingresos este mes</Badge>
+        <p className="text-[2.25rem] font-bold leading-none tracking-tight tnum">{money(total)}</p>
+        {pct !== null && total > 0 && (
+          <Badge tono={pct >= 0 ? "good" : "warn"}>
+            {signo(pct)}
+            {Math.round(pct)}% vs promedio
+          </Badge>
         )}
       </div>
 
-      <BarraProgreso
-        className="mt-5"
-        porcentaje={pct}
-        tono={tono === "neutro" ? "accent" : tono}
-      />
-      <div className="mt-2 flex justify-between text-xs text-ink-3">
-        <span>Zona segura hasta 50%</span>
-        <span>Límite 80%</span>
-      </div>
-
-      <div className="my-4 border-t border-hairline" />
-
-      <dl className="grid grid-cols-3 gap-3">
-        <div>
-          <dt className="text-xs text-ink-2">Ingresos</dt>
-          <dd className="mt-1 text-xl font-bold text-good-ink tnum">{money(ingresos)}</dd>
-        </div>
-        <div>
-          <dt className="text-xs text-ink-2">Gastos</dt>
-          <dd className="mt-1 text-xl font-bold text-bad-ink tnum">{money(gastos)}</dd>
-        </div>
-        <div>
-          <dt className="text-xs text-ink-2">Diferencia</dt>
-          <dd className="mt-1 text-xl font-bold tnum">
-            {ingresos - gastos >= 0 ? "+" : ""}
-            {money(ingresos - gastos)}
-          </dd>
-        </div>
-      </dl>
-    </BentoCard>
-  );
-}
-
-function Flujo({ datos, variante, className }: WidgetProps) {
-  const ingresos = Number(datos.ingresos_mes);
-  const gastos = Number(datos.gastos_mes);
-
-  // El subtítulo debe describir lo que el diagrama realmente muestra
-  const subtitulo =
-    ingresos === 0 && gastos > 0
-      ? `Sin ingresos este mes: los ${money(gastos)} salieron de tu saldo`
-      : ingresos > gastos
-        ? `De tus ${money(ingresos)} de ingresos, ahorraste ${money(ingresos - gastos)}`
-        : ingresos > 0
-          ? `Gastaste ${money(gastos - ingresos)} más de lo que ingresó este mes`
-          : "Cuando registres movimientos verás cómo se reparte tu plata";
-
-  return (
-    <BentoCard id="sankey" titulo="Flujo del mes" subtitulo={subtitulo} className={className}>
-      {variante === "compact" ? (
-        // En móvil, barras apiladas: el Sankey necesita ~220 px solo para las
-        // etiquetas y arrastra 74 KB gz que el celular no tiene por qué bajar.
-        <Suspense fallback={<div className="h-56 animate-pulse rounded-xl bg-card-soft" />}>
-          <FlujoCompacto datos={datos} />
-        </Suspense>
+      {total > 0 ? (
+        <Desglose
+          partes={datos.ingresos_por_categoria ?? []}
+          total={total}
+          desplazar={6}
+        />
       ) : (
-        <div className="mt-4">
-          <Suspense fallback={<div className="h-72 animate-pulse rounded-xl bg-card-soft" />}>
-            <SankeyFlujo datos={datos} />
-          </Suspense>
-        </div>
+        <p className="mt-4 text-sm text-ink-3">
+          No registraste ingresos este mes.
+          {ultimo && ` El último fue el ${fechaCorta(ultimo.fecha)}, por ${money(Number(ultimo.monto))}.`}
+        </p>
       )}
     </BentoCard>
   );
 }
+
+function Gastos({ datos, className }: WidgetProps) {
+  const total = Number(datos.gastos_mes);
+  const ingresos = Number(datos.ingresos_mes);
+  const pct = variacion(total, datos.promedio_previos?.gastos ?? 0);
+
+  // Con ingresos del mes, la referencia útil es qué proporción se llevaron
+  const ratio = ingresos > 0 ? Math.round((total / ingresos) * 100) : null;
+
+  return (
+    <BentoCard id="gastos" titulo={`Gastos de ${nombreMes(datos)}`} className={className}>
+      <div className="mt-2 flex flex-wrap items-center gap-3">
+        <p className="text-[2.25rem] font-bold leading-none tracking-tight tnum">{money(total)}</p>
+        {ratio !== null ? (
+          <Badge tono={ratio > 100 ? "bad" : ratio > 80 ? "warn" : "good"}>
+            {ratio}% de tus ingresos
+          </Badge>
+        ) : (
+          pct !== null &&
+          total > 0 && (
+            <Badge tono={pct > 25 ? "warn" : "neutro"}>
+              {signo(pct)}
+              {Math.round(pct)}% vs promedio
+            </Badge>
+          )
+        )}
+      </div>
+
+      {total > 0 ? (
+        <Desglose partes={datos.por_categoria ?? []} total={total} desplazar={1} />
+      ) : (
+        <p className="mt-4 text-sm text-ink-3">Todavía no registraste gastos este mes.</p>
+      )}
+    </BentoCard>
+  );
+}
+
+// ── 4 · Tendencia (solo escritorio) ──────────────────────────────────────────
 
 function Tendencia({ datos, className }: WidgetProps) {
   const puntos = datos.tendencia_saldo ?? [];
@@ -205,44 +224,54 @@ function Tendencia({ datos, className }: WidgetProps) {
   );
 }
 
-function UltimosIngresos({ datos, className }: WidgetProps) {
-  const ingresos = datos.ultimos_ingresos ?? [];
+// ── 5 · Últimos registros ────────────────────────────────────────────────────
+
+function UltimosRegistros({ datos, className }: WidgetProps) {
+  const movs = datos.ultimos_movimientos ?? [];
 
   return (
-    <BentoCard id="ultimos-ingresos" titulo="Últimos ingresos" className={className}>
-      {ingresos.length === 0 ? (
-        <p className="mt-4 text-sm text-ink-3">Todavía no registraste ingresos.</p>
+    <BentoCard id="ultimos-registros" titulo="Últimos registros" className={className}>
+      {movs.length === 0 ? (
+        <p className="mt-4 text-sm text-ink-3">Todavía no registraste movimientos.</p>
       ) : (
         <>
           <ul className="mt-3 space-y-1">
-            {ingresos.map((i) => (
-              <li key={i.id} className="flex items-center gap-3 py-1.5">
-                <IconoTile categoria={i.categoria} ingreso tamano="size-9" />
-                <span className="min-w-0 flex-1">
-                  <span className="block truncate text-[15px] font-semibold">
-                    {i.descripcion?.trim() || i.categoria || "Ingreso"}
-                  </span>
-                  <span className="block truncate text-xs text-ink-3">
-                    {fechaCorta(i.fecha)}
-                    {i.cuenta && ` · ${i.cuenta}`}
-                  </span>
-                </span>
-                <span className="shrink-0 font-semibold text-good-ink tnum">
-                  +{money(Number(i.monto))}
-                </span>
-              </li>
+            {movs.map((m) => (
+              <Fila key={`${m.tipo}-${m.id}`} mov={m} />
             ))}
           </ul>
           <Link
-            to="/movimientos?tipo=ingreso"
+            to="/movimientos"
             className="mt-4 flex items-center gap-1 text-sm font-semibold text-accent"
           >
-            Ver todos los ingresos
+            Ver todos los movimientos
             <ChevronRight size={16} />
           </Link>
         </>
       )}
     </BentoCard>
+  );
+}
+
+function Fila({ mov }: { mov: MovimientoReciente }) {
+  const entra = mov.tipo === "ingreso";
+  return (
+    <li className="flex items-center gap-3 py-1.5">
+      <IconoTile categoria={mov.categoria} ingreso={entra} tamano="size-9" />
+      <span className="min-w-0 flex-1">
+        <span className="block truncate text-[15px] font-semibold">
+          {mov.descripcion?.trim() || mov.categoria || (entra ? "Ingreso" : "Gasto")}
+        </span>
+        <span className="block truncate text-xs text-ink-3">
+          {fechaCorta(mov.fecha)}
+          {mov.categoria && ` · ${mov.categoria}`}
+        </span>
+      </span>
+      <span className={cn("shrink-0 font-semibold tnum", entra && "text-good-ink")}>
+        {entra ? "+" : "−"}
+        {money(Number(mov.monto))}
+      </span>
+    </li>
   );
 }
 
@@ -259,58 +288,17 @@ function fechaCorta(iso: string | null): string {
   return d.toLocaleDateString("es-PE", { day: "numeric", month: "short" });
 }
 
-function Categorias({ datos, className }: WidgetProps) {
-  const orden = [...datos.por_categoria].sort((a, b) => Number(b.total) - Number(a.total));
-  const top = orden.slice(0, 5);
-  const max = Math.max(...top.map((c) => Number(c.total)), 1);
+// ── 6 · Insights ─────────────────────────────────────────────────────────────
 
-  return (
-    <BentoCard id="categorias" titulo="Por categoría" className={className}>
-      {top.length === 0 ? (
-        <p className="mt-4 text-sm text-ink-3">Sin gastos este mes.</p>
-      ) : (
-        <>
-          <ul className="mt-4 space-y-4">
-            {top.map((c, i) => (
-              <li key={c.categoria}>
-                <div className="flex items-baseline justify-between gap-3">
-                  <span className="truncate font-semibold">{c.categoria}</span>
-                  <span className="shrink-0 font-semibold tnum">{money(Number(c.total))}</span>
-                </div>
-                <BarraProgreso
-                  className="mt-2"
-                  altura="h-1.5"
-                  porcentaje={(Number(c.total) / max) * 100}
-                  color={SERIES[i % SERIES.length]}
-                />
-              </li>
-            ))}
-          </ul>
-          {orden.length > 5 && (
-            <Link
-              to="/movimientos"
-              className="mt-5 flex items-center gap-1 text-sm font-semibold text-accent"
-            >
-              Ver las {orden.length} categorías
-              <ChevronRight size={16} />
-            </Link>
-          )}
-        </>
-      )}
-    </BentoCard>
-  );
-}
-
-const TONO_INSIGHT: Record<SeveridadInsight, { chip: string; icono: typeof Sparkles }> = {
-  critico: { chip: "bg-bad-soft text-bad-ink", icono: AlertTriangle },
-  atencion: { chip: "bg-warn-soft text-warn-ink", icono: TrendingUp },
-  info: { chip: "bg-accent-soft text-accent-ink", icono: Sparkles },
+const TONO_INSIGHT: Record<SeveridadInsight, { raya: string; chip: string; icono: typeof Sparkles }> = {
+  critico: { raya: "bg-bad-ink", chip: "bg-bad-soft text-bad-ink", icono: AlertTriangle },
+  atencion: { raya: "bg-warn-ink", chip: "bg-warn-soft text-warn-ink", icono: TrendingUp },
+  info: { raya: "bg-accent", chip: "bg-accent-soft text-accent-ink", icono: Sparkles },
 };
 
-function Insights({ className }: WidgetProps) {
+function Insights({ variante, className }: WidgetProps) {
   const { data, isPending } = useInsights();
   const marcar = useMarcarInsight();
-
   const items = data?.items ?? [];
 
   return (
@@ -327,56 +315,49 @@ function Insights({ className }: WidgetProps) {
       {isPending ? (
         <div className="mt-4 space-y-2">
           {[0, 1].map((i) => (
-            <div key={i} className="h-16 animate-pulse rounded-xl bg-card-soft" />
+            <div key={i} className="h-14 animate-pulse rounded-xl bg-card-soft" />
           ))}
         </div>
       ) : items.length === 0 ? (
         <div className="mt-4 flex flex-wrap items-center gap-4">
-          <span className="flex size-12 shrink-0 items-center justify-center rounded-xl bg-accent-soft text-accent-ink">
-            <Sparkles size={22} />
+          <span className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-accent-soft text-accent-ink">
+            <Sparkles size={20} />
           </span>
-          <div className="min-w-0 flex-1">
-            <p className="font-semibold">Todavía no hay análisis</p>
-            <p className="mt-0.5 text-sm text-ink-2">
-              Cada lunes se revisan tus últimos meses y aparecen acá los patrones que
-              valga la pena mirar. Hacen falta unos cuantos movimientos registrados.
-            </p>
-          </div>
+          <p className="min-w-0 flex-1 text-sm text-ink-2">
+            Cada lunes se revisan tus últimos meses y aparece acá lo que valga la pena mirar.
+            Hacen falta unos cuantos movimientos registrados.
+          </p>
         </div>
       ) : (
-        <ul className="mt-4 space-y-2">
+        <ul
+          className={cn(
+            "mt-3 gap-2",
+            // En escritorio la tarjeta ocupa el ancho completo: en columnas se lee mejor
+            variante === "compact" ? "flex flex-col" : "grid sm:grid-cols-2 xl:grid-cols-4",
+          )}
+        >
           {items.map((i) => {
-            const { chip, icono: Icono } = TONO_INSIGHT[i.severidad];
+            const { raya } = TONO_INSIGHT[i.severidad];
             return (
               <li
                 key={i.id}
                 className={cn(
-                  "flex gap-3 rounded-xl p-3 transition-opacity",
-                  i.leido ? "opacity-55" : "bg-card-soft",
+                  "flex gap-2.5 rounded-xl p-3",
+                  i.leido ? "opacity-50" : "bg-card-soft",
                 )}
               >
-                <span
-                  aria-hidden
-                  className={cn("flex size-9 shrink-0 items-center justify-center rounded-lg", chip)}
-                >
-                  <Icono size={17} />
-                </span>
+                <span aria-hidden className={cn("w-[3px] shrink-0 rounded-full", raya)} />
                 <div className="min-w-0 flex-1">
-                  <p className="flex flex-wrap items-baseline gap-x-2 font-semibold">
-                    {i.titulo}
-                    {i.metrica && (
-                      <span className="text-sm font-bold text-ink-2 tnum">{i.metrica}</span>
-                    )}
-                  </p>
-                  {i.detalle && <p className="mt-0.5 text-sm text-ink-2">{i.detalle}</p>}
+                  <p className="text-[13.5px] font-semibold">{i.titulo}</p>
+                  {i.detalle && <p className="mt-0.5 text-xs text-ink-2">{i.detalle}</p>}
                 </div>
                 {!i.leido && (
                   <button
                     onClick={() => marcar.mutate(i.id)}
                     aria-label={`Marcar como leído: ${i.titulo}`}
-                    className="size-8 shrink-0 rounded-lg text-ink-3 transition-colors hover:bg-card hover:text-ink"
+                    className="size-7 shrink-0 rounded-lg text-ink-3 transition-colors hover:bg-card hover:text-ink"
                   >
-                    <Check size={16} className="mx-auto" />
+                    <Check size={15} className="mx-auto" />
                   </button>
                 )}
               </li>

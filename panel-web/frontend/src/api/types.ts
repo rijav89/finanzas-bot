@@ -30,8 +30,9 @@ export interface CategoriaResumen {
   n: number;
 }
 
-export interface IngresoReciente {
+export interface MovimientoReciente {
   id: number;
+  tipo: "gasto" | "ingreso";
   monto: number;
   categoria: string | null;
   descripcion: string | null;
@@ -54,8 +55,10 @@ export interface DashboardResumen {
   por_categoria: CategoriaResumen[];
   /** Fuentes de ingreso del mes (Sueldo, Freelance…), origen del diagrama de flujo. */
   ingresos_por_categoria: CategoriaResumen[];
-  ultimos_ingresos: IngresoReciente[];
+  ultimos_movimientos: MovimientoReciente[];
   tendencia_saldo: PuntoSaldo[];
+  /** Promedio mensual de los meses previos; 0 = no hay con qué comparar. */
+  promedio_previos: { gastos: number; ingresos: number; meses: number };
 }
 
 export interface Movimiento {
