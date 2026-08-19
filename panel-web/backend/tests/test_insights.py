@@ -72,6 +72,12 @@ async def test_datos_incluyen_categorias_presupuestos_y_saldo(cliente, datos, se
     assert d["presupuestos"] == [{"categoria": "Comida", "limite": 100.0, "gastado": 200.0}]
     assert d["ahorro_mes"] == 3000 - MINIMO_MOVIMIENTOS * 50
 
+    # Las cifras derivadas se calculan acá y no en el modelo, que al dividir se equivoca
+    gasto = MINIMO_MOVIMIENTOS * 50
+    assert d["gasto_promedio_mensual"] == round(gasto / 4, 2)  # 4 meses de ventana
+    assert d["meses_de_colchon"] == round(d["saldo_total"] / d["gasto_promedio_mensual"], 1)
+    assert d["meses_de_colchon_al_ritmo_actual"] == round(d["saldo_total"] / gasto, 1)
+
 
 async def test_prestamos_no_entran_en_los_datos_del_modelo(cliente, datos, sesiones):
     """Si un préstamo contara como gasto, el modelo escribiría un insight falso."""
@@ -118,6 +124,9 @@ def _datos_minimos() -> dict:
         "deuda_pendiente": 0.0,
         "recurrentes": {"total_mensual": 120.0, "cantidad": 2},
         "ahorro_mes": 2500.0,
+        "gasto_promedio_mensual": 500.0,
+        "meses_de_colchon": 5.0,
+        "meses_de_colchon_al_ritmo_actual": 5.0,
     }
 
 
@@ -130,6 +139,10 @@ async def test_el_resumen_le_da_al_modelo_las_cifras_y_la_comparacion():
     assert "+100%" in texto  # Comida duplicó su promedio
     assert "Ropa" in texto  # gastaba antes y este mes no: vale como señal
     assert "125%" in texto  # presupuesto excedido
+    # El colchon va precalculado para que el modelo no tenga que dividir
+    assert "alcanza para 5.0 meses" in texto
+    # El rango del promedio va nombrado: deducirlo le sale mal
+    assert "agosto a agosto 2026 (1 meses" in texto
 
 
 async def test_respuesta_del_modelo_con_campos_de_mas_se_rechaza():

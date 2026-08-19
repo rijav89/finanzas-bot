@@ -134,17 +134,28 @@ async def datos_para_insights(session: AsyncSession, usuario_id: int, hoy: date)
         ).all()
     ]
 
-    saldo = await session.scalar(_SALDO, {"uid": usuario_id})
+    saldo = float(await session.scalar(_SALDO, {"uid": usuario_id}) or 0)
     deuda = await session.scalar(_DEUDAS, {"uid": usuario_id})
     recurrentes = (await session.execute(_RECURRENTES, {"uid": usuario_id})).one()
+
+    # Toda cifra derivada se calcula acá, no en el modelo: cuando se le pide dividir
+    # o promediar, el resultado a veces sale mal y suena igual de convincente.
+    gasto_promedio = round(sum(h["gastos"] for h in historia) / len(historia), 2)
+    colchon = round(saldo / gasto_promedio, 1) if gasto_promedio else None
+    colchon_al_ritmo_actual = (
+        round(saldo / actual["gastos"], 1) if actual["gastos"] else None
+    )
 
     return {
         "periodo": {"desde": desde, "hasta": hasta},
         "historia": historia,
         "promedio_categorias_previos": promedio,
         "presupuestos": presupuestos,
-        "saldo_total": float(saldo or 0),
+        "saldo_total": saldo,
         "deuda_pendiente": float(deuda or 0),
         "recurrentes": {"total_mensual": float(recurrentes.total), "cantidad": recurrentes.n},
         "ahorro_mes": round(actual["ingresos"] - actual["gastos"], 2),
+        "gasto_promedio_mensual": gasto_promedio,
+        "meses_de_colchon": colchon,
+        "meses_de_colchon_al_ritmo_actual": colchon_al_ritmo_actual,
     }

@@ -25,6 +25,9 @@ Estos son sus datos reales, ya calculados. No inventes cifras: usá solo estas.
 
 Devolvé como máximo {maximo} observaciones útiles y accionables, ordenadas de más a menos importante.
 Reglas:
+- Cada cifra que escribas tiene que aparecer TEXTUALMENTE arriba. No calcules promedios,
+  divisiones, proyecciones ni porcentajes nuevos: si el número no está, no lo menciones.
+  Sumar dos cifras que están listadas sí vale.
 - Cada observación debe apoyarse en una cifra concreta de los datos de arriba.
 - Nada de obviedades ("gastaste plata este mes") ni de consejos genéricos de ahorro.
 - Si algo subió o bajó, decí cuánto y contra qué.
@@ -92,6 +95,25 @@ def formatear_resumen(datos: dict) -> str:
         f"- pagos recurrentes mensuales: {rec['cantidad']} por {_plata(rec['total_mensual'])}"
     )
     lineas.append(f"- diferencia del mes en curso: {_plata(datos['ahorro_mes'])}")
+    # Nombrar el rango: sin esto el modelo lo deduce mal y escribe «mayo a julio»
+    # al lado de un promedio que en realidad cubre cuatro meses.
+    primero, ultimo = datos["historia"][0], datos["historia"][-1]
+    rango = (
+        f"{MESES_ES[primero['mes'] - 1]} a {MESES_ES[ultimo['mes'] - 1]} {ultimo['anio']}"
+    )
+    lineas.append(
+        f"- gasto promedio mensual de {rango} ({len(datos['historia'])} meses, incluye el actual): "
+        f"{_plata(datos['gasto_promedio_mensual'])}"
+    )
+    if datos.get("meses_de_colchon") is not None:
+        lineas.append(
+            f"- el saldo alcanza para {datos['meses_de_colchon']} meses a ese promedio"
+        )
+    if datos.get("meses_de_colchon_al_ritmo_actual") is not None:
+        lineas.append(
+            f"- al ritmo de gasto del mes en curso alcanza para "
+            f"{datos['meses_de_colchon_al_ritmo_actual']} meses"
+        )
 
     return "\n".join(lineas)
 

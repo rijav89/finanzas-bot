@@ -58,34 +58,36 @@ async def procesar(usuario_id: int, hoy: date, seco: bool) -> str:
         desde, hasta = insights_ia.periodo_de(datos)
         modelo = get_settings().qwen_model_text
 
-        async with session.begin():
-            # Volver a correr el job para el mismo período reemplaza, no acumula
-            await session.execute(
-                delete(InsightIA).where(
-                    InsightIA.usuario_id == usuario_id,
-                    InsightIA.periodo_inicio == desde,
-                    InsightIA.periodo_fin == hasta,
+        # Sin session.begin(): las consultas de agregación ya abrieron la transacción
+        # de esta sesión, y anidarla explícitamente falla.
+        # Volver a correr el job para el mismo período reemplaza, no acumula
+        await session.execute(
+            delete(InsightIA).where(
+                InsightIA.usuario_id == usuario_id,
+                InsightIA.periodo_inicio == desde,
+                InsightIA.periodo_fin == hasta,
+            )
+        )
+        for i in respuesta.insights:
+            session.add(
+                InsightIA(
+                    usuario_id=usuario_id,
+                    tipo=i.tipo,
+                    severidad=i.severidad,
+                    titulo=i.titulo,
+                    periodo_inicio=desde,
+                    periodo_fin=hasta,
+                    payload={
+                        "detalle": i.detalle,
+                        "categoria": i.categoria,
+                        "metrica": i.metrica,
+                        "delta_pct": i.delta_pct,
+                    },
+                    modelo=modelo,
+                    tokens_usados=tokens,
                 )
             )
-            for i in respuesta.insights:
-                session.add(
-                    InsightIA(
-                        usuario_id=usuario_id,
-                        tipo=i.tipo,
-                        severidad=i.severidad,
-                        titulo=i.titulo,
-                        periodo_inicio=desde,
-                        periodo_fin=hasta,
-                        payload={
-                            "detalle": i.detalle,
-                            "categoria": i.categoria,
-                            "metrica": i.metrica,
-                            "delta_pct": i.delta_pct,
-                        },
-                        modelo=modelo,
-                        tokens_usados=tokens,
-                    )
-                )
+        await session.commit()
 
         return f"usuario {usuario_id}: {len(respuesta.insights)} insights, {tokens} tokens"
 
