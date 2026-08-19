@@ -16,6 +16,11 @@ LOGS=/home/ubuntu/finanzas-bot/panel-web/backend/logs
 # Keepalive de Supabase — todos los días 13:00 UTC = 08:00 en Lima.
 0 13 * * * cd $PANEL && ./.venv/bin/python -m jobs.keepalive_supabase >> $LOGS/keepalive.log 2>&1
 
+# Backup de la base — domingos 09:00 UTC = 04:00 en Lima, antes de los insights del
+# lunes. El plan gratuito de Supabase no guarda backups propios: esto es lo único que
+# queda si se corrompe algo o alguien borra una tabla. Rota a 8 semanas.
+0 9 * * 0 $PANEL/deploy/backup_bd.sh >> $LOGS/backup.log 2>&1
+
 # Rotación mínima: los logs de estos jobs son de pocas líneas por corrida, pero
 # sin esto crecen para siempre en un disco de 50 GB compartido con la base de nada.
 0 4 1 * * find $LOGS -name '*.log' -size +5M -exec truncate -s 0 {} \;
