@@ -15,6 +15,7 @@ from app.api.v1 import (
     cuentas,
     dashboard,
     deudas,
+    insights,
     movimientos,
     perfil,
     presupuestos,
@@ -69,6 +70,7 @@ for _router in (
     ahorros.router,
     recurrentes.router,
     perfil.router,
+    insights.router,
 ):
     app.include_router(_router, prefix="/api/v1")
 

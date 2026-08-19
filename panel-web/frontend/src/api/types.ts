@@ -94,6 +94,32 @@ export const CATEGORIAS_INGRESO = [
 
 export type Semaforo = "bien" | "atencion" | "critico" | "info";
 
+// ── Insights IA ──────────────────────────────────────────────────────────────
+
+export type SeveridadInsight = "info" | "atencion" | "critico";
+
+export interface Insight {
+  id: number;
+  tipo: "patron_gasto" | "alerta_presupuesto" | "tendencia" | "recomendacion";
+  severidad: SeveridadInsight;
+  titulo: string;
+  detalle: string | null;
+  categoria: string | null;
+  metrica: string | null;
+  delta_pct: number | null;
+  periodo_inicio: string;
+  periodo_fin: string;
+  leido: boolean;
+  creado_en: string;
+}
+
+export interface InsightsResp {
+  items: Insight[];
+  sin_leer: number;
+  /** Null mientras el job semanal no haya corrido nunca. */
+  generado_en: string | null;
+}
+
 export type TipoCategoria = "gasto" | "ingreso" | "ambos";
 
 export interface Categoria {

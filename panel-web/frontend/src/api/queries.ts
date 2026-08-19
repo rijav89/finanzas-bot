@@ -9,6 +9,7 @@ import type {
   DashboardResumen,
   Deuda,
   DeudasResp,
+  InsightsResp,
   Me,
   MovimientosPage,
   PresupuestosResp,
@@ -266,6 +267,23 @@ export function usePagarCuota() {
         body: cuenta_id ? { cuenta_id } : {},
       }),
     onSuccess: invalidar,
+  });
+}
+
+export function useInsights() {
+  return useQuery({
+    queryKey: ["insights"],
+    queryFn: () => api<InsightsResp>("/insights"),
+    // Los genera un cron semanal: no tiene sentido revalidarlos seguido
+    staleTime: 30 * 60_000,
+  });
+}
+
+export function useMarcarInsight() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: number) => api(`/insights/${id}`, { method: "PATCH", body: { leido: true } }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["insights"] }),
   });
 }
 

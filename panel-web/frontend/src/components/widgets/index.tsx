@@ -1,8 +1,16 @@
-import { Bell, ChevronDown, ChevronRight, Sparkles } from "lucide-react";
+import {
+  AlertTriangle,
+  Check,
+  ChevronDown,
+  ChevronRight,
+  Sparkles,
+  TrendingUp,
+} from "lucide-react";
 import { lazy, Suspense, useState } from "react";
 import { Link } from "react-router-dom";
 
-import type { DashboardResumen } from "@/api/types";
+import { useInsights, useMarcarInsight } from "@/api/queries";
+import type { DashboardResumen, SeveridadInsight } from "@/api/types";
 import { BentoCard } from "@/components/bento/BentoCard";
 import { Badge } from "@/components/ui/Badge";
 import { BarraProgreso } from "@/components/ui/BarraProgreso";
@@ -287,24 +295,89 @@ function Categorias({ datos, className }: WidgetProps) {
   );
 }
 
+const TONO_INSIGHT: Record<SeveridadInsight, { chip: string; icono: typeof Sparkles }> = {
+  critico: { chip: "bg-bad-soft text-bad-ink", icono: AlertTriangle },
+  atencion: { chip: "bg-warn-soft text-warn-ink", icono: TrendingUp },
+  info: { chip: "bg-accent-soft text-accent-ink", icono: Sparkles },
+};
+
 function Insights({ className }: WidgetProps) {
+  const { data, isPending } = useInsights();
+  const marcar = useMarcarInsight();
+
+  const items = data?.items ?? [];
+
   return (
-    <BentoCard id="insights" titulo="Insights · próximamente" className={className}>
-      <div className="mt-4 flex flex-wrap items-center gap-4">
-        <span className="flex size-12 shrink-0 items-center justify-center rounded-xl bg-accent-soft text-accent-ink">
-          <Sparkles size={22} />
-        </span>
-        <div className="min-w-0 flex-1">
-          <p className="font-semibold">Análisis automáticos de tus hábitos</p>
-          <p className="mt-0.5 text-sm text-ink-2">
-            Detección de gastos inusuales, proyección de fin de mes y sugerencias de tope.
-          </p>
+    <BentoCard
+      id="insights"
+      titulo="Insights"
+      subtitulo={
+        data?.generado_en
+          ? `Generados el ${fechaCorta(data.generado_en).toLowerCase()}`
+          : "Se generan solos cada lunes"
+      }
+      className={className}
+    >
+      {isPending ? (
+        <div className="mt-4 space-y-2">
+          {[0, 1].map((i) => (
+            <div key={i} className="h-16 animate-pulse rounded-xl bg-card-soft" />
+          ))}
         </div>
-        <button className="flex h-10 shrink-0 items-center gap-2 rounded-xl bg-card px-4 text-sm font-semibold text-ink-2 shadow-sm ring-1 ring-[var(--ring)]">
-          <Bell size={16} />
-          Avisame
-        </button>
-      </div>
+      ) : items.length === 0 ? (
+        <div className="mt-4 flex flex-wrap items-center gap-4">
+          <span className="flex size-12 shrink-0 items-center justify-center rounded-xl bg-accent-soft text-accent-ink">
+            <Sparkles size={22} />
+          </span>
+          <div className="min-w-0 flex-1">
+            <p className="font-semibold">Todavía no hay análisis</p>
+            <p className="mt-0.5 text-sm text-ink-2">
+              Cada lunes se revisan tus últimos meses y aparecen acá los patrones que
+              valga la pena mirar. Hacen falta unos cuantos movimientos registrados.
+            </p>
+          </div>
+        </div>
+      ) : (
+        <ul className="mt-4 space-y-2">
+          {items.map((i) => {
+            const { chip, icono: Icono } = TONO_INSIGHT[i.severidad];
+            return (
+              <li
+                key={i.id}
+                className={cn(
+                  "flex gap-3 rounded-xl p-3 transition-opacity",
+                  i.leido ? "opacity-55" : "bg-card-soft",
+                )}
+              >
+                <span
+                  aria-hidden
+                  className={cn("flex size-9 shrink-0 items-center justify-center rounded-lg", chip)}
+                >
+                  <Icono size={17} />
+                </span>
+                <div className="min-w-0 flex-1">
+                  <p className="flex flex-wrap items-baseline gap-x-2 font-semibold">
+                    {i.titulo}
+                    {i.metrica && (
+                      <span className="text-sm font-bold text-ink-2 tnum">{i.metrica}</span>
+                    )}
+                  </p>
+                  {i.detalle && <p className="mt-0.5 text-sm text-ink-2">{i.detalle}</p>}
+                </div>
+                {!i.leido && (
+                  <button
+                    onClick={() => marcar.mutate(i.id)}
+                    aria-label={`Marcar como leído: ${i.titulo}`}
+                    className="size-8 shrink-0 rounded-lg text-ink-3 transition-colors hover:bg-card hover:text-ink"
+                  >
+                    <Check size={16} className="mx-auto" />
+                  </button>
+                )}
+              </li>
+            );
+          })}
+        </ul>
+      )}
     </BentoCard>
   );
 }

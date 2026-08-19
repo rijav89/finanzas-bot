@@ -1,0 +1,21 @@
+# Cron del servidor del panel (150.136.170.92) — instalar con: crontab crontab.txt
+#
+# ⚠️ El servidor corre en UTC y las horas de acá son UTC, no de Lima.
+#    Poner TZ= arriba NO cambia la hora de disparo en el cron de Debian/Ubuntu:
+#    solo afecta el entorno del proceso. Por eso las horas están convertidas a mano
+#    (Lima = UTC-5, sin horario de verano) y anotadas al lado.
+#    Los scripts, por su parte, calculan sus fechas con ZoneInfo("America/Lima").
+
+PANEL=/home/ubuntu/finanzas-bot/panel-web/backend
+LOGS=/home/ubuntu/finanzas-bot/panel-web/backend/logs
+
+# Insights de la semana — lunes 08:30 UTC = lunes 03:30 en Lima.
+# Antes de que el usuario se despierte, para que los tenga al abrir el panel.
+30 8 * * 1 cd $PANEL && ./.venv/bin/python -m jobs.generar_insights >> $LOGS/insights.log 2>&1
+
+# Keepalive de Supabase — todos los días 13:00 UTC = 08:00 en Lima.
+0 13 * * * cd $PANEL && ./.venv/bin/python -m jobs.keepalive_supabase >> $LOGS/keepalive.log 2>&1
+
+# Rotación mínima: los logs de estos jobs son de pocas líneas por corrida, pero
+# sin esto crecen para siempre en un disco de 50 GB compartido con la base de nada.
+0 4 1 * * find $LOGS -name '*.log' -size +5M -exec truncate -s 0 {} \;
