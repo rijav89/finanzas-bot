@@ -20,7 +20,8 @@ Repo: rijav89/finanzas-bot (privado). Versión activa: v3.1.
 - Key SSH: `E:\Proyectos\Finanzas Bot\Keys\ssh-key-2026-08-02-backend.key`
 - Estado (2026-08-15): backend FastAPI desplegado en `/home/ubuntu/finanzas-bot/panel-web/backend` (snapshot vía `git archive` + scp, aún sin git clone), venv propio, `.env` con permisos 600
 - Servicio systemd: `panel-api` (uvicorn 127.0.0.1:8000, MemoryMax=350M, hardening). ⚠️ Tiene `Environment=COOKIE_SECURE=false` TEMPORAL para pruebas locales sin HTTPS — quitar en F6 al configurar nginx+certbot
-- Pendiente F6: nginx server block, certbot/SSL, rate limits, migración **005** (RLS — el número 004 ya lo tomó el catálogo de categorías), rotación password BD
+- **F6 en curso (2026-08-19)**: hecho — rate limits nginx (10 r/s API, 5 r/min login/vincular) y headers de seguridad, swap 1 GB con `swappiness=10`, backup semanal `deploy/backup_bd.sh` (pg_dump 17 del repo PGDG porque Supabase corre 17.6 y el cliente 16 de Ubuntu se niega; rota a 8 semanas, domingos 04:00 Lima), y **rol `panel_web`** de privilegio mínimo (migración 007). **Bloqueado por el usuario**: definir subdominio + A record a 150.136.170.92 → certbot, abrir 80/443, quitar `COOKIE_SECURE=false`; y rotar password de BD y clave anónima en el dashboard de Supabase.
+- Decisión sobre RLS (2026-08-19): las políticas de la 007 son **permisivas a propósito** (`USING (true)`). Filtrar por `usuario_id` en la base exigiría un `SET LOCAL` por transacción = **+150 ms por petición** (medido), y **no protege de un `.env` robado**: quien tenga la credencial fija el GUC él mismo. Hoy el aislamiento lo dan los filtros de cada query y los tests anti-IDOR. Con varios usuarios reales, el cambio es reemplazar `USING (true)` por `usuario_id = current_setting('app.usuario_id')::int`; `_fijar_guc_rls` ya espera detrás de `RLS_ACTIVO`.
 
 **Base de datos**: Supabase (plan gratuito)
 - Host: `aws-1-sa-east-1.pooler.supabase.com` · Puerto 5432 · DB `postgres`
