@@ -12,6 +12,7 @@ import { Link } from "react-router-dom";
 import { useInsights, useMarcarInsight } from "@/api/queries";
 import type { DashboardResumen, SeveridadInsight } from "@/api/types";
 import { BentoCard } from "@/components/bento/BentoCard";
+import { SERIES } from "@/components/charts/flujo";
 import { Badge } from "@/components/ui/Badge";
 import { BarraProgreso } from "@/components/ui/BarraProgreso";
 import { cn } from "@/lib/cn";
@@ -25,12 +26,9 @@ const SankeyFlujo = lazy(() =>
 const LineaSaldo = lazy(() =>
   import("@/components/charts/LineaSaldo").then((m) => ({ default: m.LineaSaldo })),
 );
-
-/** Colores de serie para cuentas y categorías, en el orden del mockup. */
-export const SERIES = [
-  "var(--s1)", "var(--s2)", "var(--s3)", "var(--s4)",
-  "var(--s5)", "var(--s6)", "var(--s7)",
-];
+const FlujoCompacto = lazy(() =>
+  import("@/components/charts/FlujoCompacto").then((m) => ({ default: m.FlujoCompacto })),
+);
 
 export interface WidgetProps {
   datos: DashboardResumen;
@@ -45,11 +43,11 @@ export const REGISTRO: Record<
 > = {
   "saldo-total": { prioridad: 1, span: "lg:col-span-3", Componente: SaldoTotal },
   "gasto-mes": { prioridad: 2, span: "lg:col-span-3", Componente: GastoMes },
+  sankey: { prioridad: 2, span: "lg:col-span-4", Componente: Flujo },
+  "ultimos-ingresos": { prioridad: 2, span: "lg:col-span-2", Componente: UltimosIngresos },
+  insights: { prioridad: 2, span: "lg:col-span-6", Componente: Insights },
   "tendencia-saldo": { prioridad: 3, span: "lg:col-span-4", Componente: Tendencia },
-  "ultimos-ingresos": { prioridad: 3, span: "lg:col-span-2", Componente: UltimosIngresos },
-  sankey: { prioridad: 4, span: "lg:col-span-4", Componente: Flujo },
-  categorias: { prioridad: 5, span: "lg:col-span-2", Componente: Categorias },
-  insights: { prioridad: 6, span: "lg:col-span-6", Componente: Insights },
+  categorias: { prioridad: 3, span: "lg:col-span-2", Componente: Categorias },
 };
 
 function SaldoTotal({ datos, className }: WidgetProps) {
@@ -155,7 +153,7 @@ function GastoMes({ datos, className }: WidgetProps) {
   );
 }
 
-function Flujo({ datos, className }: WidgetProps) {
+function Flujo({ datos, variante, className }: WidgetProps) {
   const ingresos = Number(datos.ingresos_mes);
   const gastos = Number(datos.gastos_mes);
 
@@ -171,11 +169,19 @@ function Flujo({ datos, className }: WidgetProps) {
 
   return (
     <BentoCard id="sankey" titulo="Flujo del mes" subtitulo={subtitulo} className={className}>
-      <div className="mt-4">
-        <Suspense fallback={<div className="h-72 animate-pulse rounded-xl bg-card-soft" />}>
-          <SankeyFlujo datos={datos} />
+      {variante === "compact" ? (
+        // En móvil, barras apiladas: el Sankey necesita ~220 px solo para las
+        // etiquetas y arrastra 74 KB gz que el celular no tiene por qué bajar.
+        <Suspense fallback={<div className="h-56 animate-pulse rounded-xl bg-card-soft" />}>
+          <FlujoCompacto datos={datos} />
         </Suspense>
-      </div>
+      ) : (
+        <div className="mt-4">
+          <Suspense fallback={<div className="h-72 animate-pulse rounded-xl bg-card-soft" />}>
+            <SankeyFlujo datos={datos} />
+          </Suspense>
+        </div>
+      )}
     </BentoCard>
   );
 }

@@ -1,9 +1,10 @@
 import { ResponsiveSankey } from "@nivo/sankey";
 
 import type { DashboardResumen } from "@/api/types";
+import { calcularFlujo } from "@/components/charts/flujo";
 import { money } from "@/lib/money";
 
-/** Río de dinero del mes.
+/** Río de dinero del mes, para pantallas anchas.
  *
  *  Izquierda: de dónde salió la plata — tus fuentes de ingreso reales (Sueldo,
  *  Freelance…) y, si gastaste más de lo que entró, el "Saldo anterior" que cubre
@@ -11,36 +12,11 @@ import { money } from "@/lib/money";
  *
  *  Importante: Nivo calcula el valor de cada nodo sumando sus enlaces, así que
  *  los nodos de origen deben sumar exactamente lo mismo que los de destino; si
- *  no, una etiqueta termina mostrando un número que no le corresponde.
+ *  no, una etiqueta termina mostrando un número que no le corresponde. De eso se
+ *  encarga `calcularFlujo`, compartido con la vista compacta de móvil.
  */
 export function SankeyFlujo({ datos }: { datos: DashboardResumen }) {
-  const ingresos = Number(datos.ingresos_mes) || 0;
-  const gastos = Number(datos.gastos_mes) || 0;
-  const ahorro = Math.max(ingresos - gastos, 0);
-  const delSaldo = Math.max(gastos - ingresos, 0); // lo que salió del acumulado
-
-  // Destinos: hasta 5 categorías + "Otros gastos" agrupado, y el ahorro si sobró
-  const catsGasto = [...datos.por_categoria]
-    .sort((a, b) => Number(b.total) - Number(a.total))
-    .slice(0, 5);
-  const restoGasto = gastos - catsGasto.reduce((s, c) => s + Number(c.total), 0);
-
-  const destinos: { id: string; valor: number }[] = [
-    ...(ahorro > 0.005 ? [{ id: "Ahorro", valor: ahorro }] : []),
-    ...catsGasto.map((c) => ({ id: c.categoria, valor: Number(c.total) })),
-    ...(restoGasto > 0.005 ? [{ id: "Otros gastos", valor: restoGasto }] : []),
-  ];
-
-  // Orígenes: fuentes de ingreso reales + saldo previo si hizo falta
-  const fuentes = [...(datos.ingresos_por_categoria ?? [])]
-    .map((c) => ({ id: etiquetaFuente(c.categoria), valor: Number(c.total) }))
-    .filter((f) => f.valor > 0.005)
-    .sort((a, b) => b.valor - a.valor);
-
-  const origenes = [
-    ...fuentes,
-    ...(delSaldo > 0.005 ? [{ id: "Saldo anterior", valor: delSaldo }] : []),
-  ];
+  const { origenes, destinos, total: totalOrigen } = calcularFlujo(datos);
 
   if (origenes.length === 0 || destinos.length === 0) {
     return (
@@ -51,7 +27,6 @@ export function SankeyFlujo({ datos }: { datos: DashboardResumen }) {
   }
 
   // Reparte cada origen entre los destinos en proporción, para que el total cuadre
-  const totalOrigen = origenes.reduce((s, o) => s + o.valor, 0);
   const links = origenes.flatMap((o) =>
     destinos
       .map((d) => ({
@@ -98,11 +73,6 @@ export function SankeyFlujo({ datos }: { datos: DashboardResumen }) {
       />
     </div>
   );
-}
-
-/** 'Ingreso' es el valor por defecto del bot: como etiqueta suelta no dice nada. */
-function etiquetaFuente(categoria: string | null): string {
-  return !categoria || categoria === "Ingreso" ? "Otros ingresos" : categoria;
 }
 
 function Tooltip({ titulo, valor }: { titulo: string; valor: number }) {

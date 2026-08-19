@@ -71,8 +71,8 @@ export default function Dashboard() {
             <Monitor size={19} />
           </span>
           <div className="min-w-0">
-            <p className="text-sm font-semibold">Flujo, categorías e insights</p>
-            <p className="text-sm text-ink-3">Las tarjetas de análisis se ven en escritorio</p>
+            <p className="text-sm font-semibold">Tendencia de saldo y desglose por categoría</p>
+            <p className="text-sm text-ink-3">Esas dos tarjetas se ven en escritorio</p>
           </div>
         </div>
       )}
