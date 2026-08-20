@@ -1,10 +1,13 @@
 import { WalletCards } from "lucide-react";
-import { useState } from "react";
+import { lazy, Suspense, useState } from "react";
 
 import { ApiError } from "@/api/client";
 import { useLogin } from "@/api/queries";
 import { Boton } from "@/components/ui/Boton";
 import { Card } from "@/components/ui/Card";
+
+// El alta es la excepción, no el camino habitual: no vale la pena en el bundle inicial
+const Registro = lazy(() => import("@/pages/Registro"));
 
 const MENSAJES: Record<string, string> = {
   credenciales_invalidas: "Correo o contraseña incorrectos.",
@@ -15,7 +18,18 @@ const MENSAJES: Record<string, string> = {
 export default function Login() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [creando, setCreando] = useState(false);
   const login = useLogin();
+
+  // Login vive fuera del router (solo se monta sin sesión), así que el alta se
+  // alterna con estado en vez de con una ruta.
+  if (creando) {
+    return (
+      <Suspense fallback={null}>
+        <Registro onVolver={() => setCreando(false)} />
+      </Suspense>
+    );
+  }
 
   const mensajeError =
     login.error instanceof ApiError
@@ -79,6 +93,16 @@ export default function Login() {
               {login.isPending ? "Ingresando…" : "Ingresar"}
             </Boton>
           </form>
+
+          <div className="mt-5 border-t border-hairline pt-4 text-center">
+            <p className="text-sm text-ink-2">¿Usás el bot y todavía no tenés panel?</p>
+            <button
+              onClick={() => setCreando(true)}
+              className="mt-1 text-sm font-semibold text-accent"
+            >
+              Creá tu cuenta con el código del bot
+            </button>
+          </div>
         </Card>
       </div>
     </main>

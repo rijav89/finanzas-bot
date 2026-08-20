@@ -10,6 +10,31 @@ from app.core.security import hash_codigo
 from app.models import CodigoVinculacion, VinculoAuth
 
 
+async def verificar_codigo(session: AsyncSession, codigo: str) -> CodigoVinculacion:
+    """Comprueba que el código sirva, SIN consumirlo.
+
+    La usa el alta de usuarios: si el código no vale, hay que enterarse antes de crear
+    la cuenta en Supabase. Al revés, cada código mal tipeado dejaría una cuenta de Auth
+    huérfana, sin vínculo y sin forma de limpiarla desde acá.
+    """
+    fila = await session.scalar(
+        select(CodigoVinculacion).where(
+            CodigoVinculacion.codigo_hash == hash_codigo(codigo),
+            CodigoVinculacion.usado.is_(False),
+            CodigoVinculacion.expira_en > datetime.now(timezone.utc),
+        )
+    )
+    if fila is None:
+        raise HTTPException(status_code=400, detail="codigo_invalido_o_expirado")
+
+    ya = await session.scalar(
+        select(VinculoAuth.id).where(VinculoAuth.usuario_id == fila.usuario_id)
+    )
+    if ya is not None:
+        raise HTTPException(status_code=409, detail="telegram_ya_vinculado")
+    return fila
+
+
 async def canjear_codigo(session: AsyncSession, auth_uid: str, codigo: str) -> int:
     """Valida el código (vigente, no usado) y crea el vínculo. Devuelve usuario_id.
 

@@ -29,6 +29,26 @@ class GoTrueClient:
             raise HTTPException(status_code=401, detail="credenciales_invalidas")
         return r.json()
 
+    async def signup(self, email: str, password: str) -> dict:
+        """Alta por la vía pública, con la clave anónima.
+
+        No se usa la API de administración a propósito: exigiría guardar la
+        service_role key —que puede todo sobre el proyecto— en el servidor del panel.
+        Quien decide si alguien puede registrarse es el código del bot, no Supabase.
+
+        Con la confirmación por correo desactivada, la respuesta ya trae la sesión.
+        """
+        r = await self._client.post(
+            "/signup", json={"email": email, "password": password}
+        )
+        if r.status_code == 422 or (
+            r.status_code == 400 and "already" in r.text.lower()
+        ):
+            raise HTTPException(status_code=409, detail="correo_ya_registrado")
+        if r.status_code not in (200, 201):
+            raise HTTPException(status_code=400, detail="alta_rechazada")
+        return r.json()
+
     async def refresh(self, refresh_token: str) -> dict:
         r = await self._client.post(
             "/token", params={"grant_type": "refresh_token"},

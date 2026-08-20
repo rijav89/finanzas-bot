@@ -384,6 +384,17 @@ export function useLogin() {
   });
 }
 
+/** Alta de un usuario nuevo con el código que entrega el bot. Deja la sesión
+ *  iniciada y la cuenta ya vinculada, así que basta con refrescar `me`. */
+export function useRegistrar() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: { email: string; password: string; codigo: string }) =>
+      api("/auth/registrar", { method: "POST", body }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["me"] }),
+  });
+}
+
 export function useVincular() {
   const qc = useQueryClient();
   return useMutation({
