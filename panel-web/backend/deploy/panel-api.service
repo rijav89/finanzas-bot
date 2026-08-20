@@ -7,8 +7,6 @@ Type=simple
 User=ubuntu
 WorkingDirectory=/home/ubuntu/finanzas-bot/panel-web/backend
 ExecStart=/home/ubuntu/finanzas-bot/panel-web/backend/.venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8000
-# TEMPORAL para pruebas locales sin HTTPS — quitar en F6 (nginx + certbot)
-Environment=COOKIE_SECURE=false
 Restart=on-failure
 RestartSec=5
 MemoryMax=350M
