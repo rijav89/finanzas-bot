@@ -66,6 +66,10 @@ def detectar_intencion(mensaje: str) -> str:
     except Exception:
         return "FUERA_DE_TEMA"
 
+# Mismas opciones que ya usan los botones de "¿con qué medio pagaste?" en
+# _procesar_y_guardar_gastos — si se agrega un medio acá hay que agregarlo ahí.
+MEDIOS_DISPONIBLES = ["Yape", "Plin", "Efectivo", "Tarjeta", "Transferencia"]
+
 
 # --- 2. Ingreso ---
 PROMPT_INGRESO = """Hoy es {hoy}.
@@ -109,11 +113,13 @@ Extrae fecha y lista de gastos. Responde SOLO con JSON válido:
       "monto": <float>,
       "descripcion": "<descripción>",
       "categoria": "<{categorias}>",
+      "medio": "<{medios} o null si el usuario no lo menciona>",
       "cuenta_origen": "<nombre de cuenta o Principal>"
     }}
   ]
 }}
-Adapta 'fecha' según mencione el usuario (ej. "ayer" resta 1 día). Si no menciona, usa {hoy}."""
+Adapta 'fecha' según mencione el usuario (ej. "ayer" resta 1 día). Si no menciona, usa {hoy}.
+'medio' es null salvo que el usuario diga explícitamente cómo pagó (ej. "con yape", "en efectivo")."""
 
 def extraer_gastos(mensaje: str, cuentas=None, usuario_id=None) -> tuple[list[dict], str]:
     from datetime import datetime
@@ -123,11 +129,13 @@ def extraer_gastos(mensaje: str, cuentas=None, usuario_id=None) -> tuple[list[di
     try:
         raw = _call(PROMPT_GASTOS.format(
             mensaje=mensaje, hoy=hoy, cuentas=cuentas_str, categorias="|".join(opciones),
+            medios="|".join(MEDIOS_DISPONIBLES),
         ))
         data = json.loads(raw)
         gastos = data.get("gastos", [])
         for g in gastos:
             g["categoria"] = _validar(g.get("categoria"), opciones, "Otros")
+            g["medio"] = _validar(g.get("medio"), MEDIOS_DISPONIBLES, None)
         return gastos, data.get("fecha", hoy)
     except Exception:
         return [], hoy
