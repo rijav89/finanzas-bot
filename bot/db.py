@@ -117,7 +117,8 @@ def registrar_transferencia(usuario_id: int, cuenta_origen_id: int, cuenta_desti
 
 
 
-def guardar_transaccion(usuario_id, monto, medio, descripcion, categoria, destinatario="No detectado", fecha_voucher="No detectada", fecha=None, cuenta_id=None):
+def guardar_transaccion(usuario_id, monto, medio, descripcion, categoria, destinatario="No detectado", fecha_voucher="No detectada", fecha=None, cuenta_id=None) -> int:
+    """Devuelve el id de la transacción insertada."""
     with db_pool.connection() as conn:
         with conn.cursor() as cur:
             if cuenta_id is None:
@@ -131,6 +132,7 @@ def guardar_transaccion(usuario_id, monto, medio, descripcion, categoria, destin
                     INSERT INTO transacciones
                         (usuario_id, monto, medio, descripcion, categoria, destinatario, fecha_voucher, fecha, cuenta_id)
                     VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    RETURNING id
                     """,
                     (usuario_id, monto, medio, descripcion, categoria, destinatario, fecha_voucher, fecha, cuenta_id),
                 )
@@ -140,10 +142,13 @@ def guardar_transaccion(usuario_id, monto, medio, descripcion, categoria, destin
                     INSERT INTO transacciones
                         (usuario_id, monto, medio, descripcion, categoria, destinatario, fecha_voucher, cuenta_id)
                     VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                    RETURNING id
                     """,
                     (usuario_id, monto, medio, descripcion, categoria, destinatario, fecha_voucher, cuenta_id),
                 )
+            transaccion_id = cur.fetchone()[0]
             conn.commit()
+            return transaccion_id
 
 
 def actualizar_medio_ultimas(usuario_id: int, medio: str):

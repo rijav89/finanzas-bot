@@ -60,7 +60,7 @@ from db import (
     desvincular_web,
 )
 from ocr import procesar_voucher
-from categorias import clasificar_gasto, clasificar_ingreso
+from categorias import clasificar_gasto, clasificar_ingreso, catalogo
 from gastos_manual import detectar_intencion, extraer_gastos, extraer_ingreso, extraer_edicion, extraer_transferencia
 from graficos import generar_grafico_categorias, generar_grafico_resumen
 
@@ -85,6 +85,7 @@ pago_fijo_pendiente      = {}
 edicion_pendiente        = {}
 transferencia_pendiente  = {}
 cuenta_pendiente         = {}
+categoria_pendiente_cola = {}  # telegram_id -> [{"id", "monto", "descripcion"}, ...]
 
 EMOJIS_CATEGORIA = {
     "Comida":          "🍽️",
@@ -293,61 +294,13 @@ async def handle_texto(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
     elif intencion == "REGISTRAR_GASTOS":
-        await _procesar_y_guardar_gastos(update, usuario_id, mensaje)
+        await _procesar_y_guardar_gastos(update, context, usuario_id, mensaje)
 
 
-async def _procesar_y_guardar_gastos(update, usuario_id, mensaje):
-    """Extrae gastos del mensaje, detecta fecha, pregunta medio y guarda."""
-    from datetime import datetime
-    cuentas = obtener_cuentas(usuario_id)
-    nombres_cuentas = [c[1] for c in cuentas]
-    
-    await update.message.reply_text("⏳ Analizando tus gastos...")
-    gastos, fecha_str = extraer_gastos(mensaje, nombres_cuentas, usuario_id)
-
-    if not gastos:
-        await update.message.reply_text(
-            "⚠️ No pude identificar gastos en tu mensaje.\n"
-            "Intenta ser más específico:\n"
-            "_\"Gasté 50 soles en almuerzo y 20 en taxi\"_",
-            parse_mode="Markdown", reply_markup=menu_principal()
-        )
-        return
-
-    # Convertir fecha_str a datetime
-    try:
-        fecha_dt = datetime.strptime(fecha_str, "%Y-%m-%d")
-    except Exception:
-        fecha_dt = None
-
-    hoy = datetime.now().strftime("%Y-%m-%d")
-    es_fecha_distinta = fecha_str and fecha_str != hoy
-
-    resumen_texto = "✅ *Gastos registrados:*\n\n"
-    total = 0
-    for gasto in gastos:
-        monto = gasto.get("monto", 0)
-        descripcion = gasto.get("descripcion", "Sin descripción")
-        categoria = gasto.get("categoria", "Otros")
-        cuenta_origen_str = gasto.get("cuenta_origen", "Principal")
-        cuenta_origen_id = obtener_cuenta_por_nombre(usuario_id, cuenta_origen_str) or obtener_cuenta_principal(usuario_id)
-        
-        emoji = EMOJIS_CATEGORIA.get(categoria, "📦")
-        guardar_transaccion(
-            usuario_id, monto=monto, medio="Manual",
-            descripcion=descripcion, categoria=categoria,
-            destinatario="—", fecha_voucher="—",
-            fecha=fecha_dt, cuenta_id=cuenta_origen_id
-        )
-        resumen_texto += f"{emoji} S/ {monto:.2f} — {descripcion} _{categoria}_\n"
-        total += float(monto)
-
-    resumen_texto += f"\n💰 *Total registrado: S/ {total:.2f}*"
-    if es_fecha_distinta:
-        fecha_legible = fecha_dt.strftime("%d/%m/%Y") if fecha_dt else fecha_str
-        resumen_texto += f"\n📅 Fecha registrada: *{fecha_legible}*"
-
-    teclado_medio = InlineKeyboardMarkup([
+def teclado_medio_gasto() -> InlineKeyboardMarkup:
+    """Mismo teclado que ya usan los gastos de texto — factorizado para
+    reusarlo también desde la importación por lotes (Task 8)."""
+    return InlineKeyboardMarkup([
         [
             InlineKeyboardButton("📱 Yape", callback_data="medio_Yape"),
             InlineKeyboardButton("💙 Plin", callback_data="medio_Plin"),
@@ -362,11 +315,109 @@ async def _procesar_y_guardar_gastos(update, usuario_id, mensaje):
         ],
     ])
 
-    await update.message.reply_text(
-        resumen_texto + "\n\n¿Con qué medio pagaste?",
-        parse_mode="Markdown",
-        reply_markup=teclado_medio
+
+def encolar_pregunta_categoria(telegram_id: int, trans_id: int, monto: float, descripcion: str) -> None:
+    """El clasificador automático no supo ubicar este gasto (cayó en 'Otros'):
+    se pregunta después, sin bloquear el guardado."""
+    categoria_pendiente_cola.setdefault(telegram_id, []).append({
+        "id": trans_id, "monto": float(monto), "descripcion": descripcion,
+    })
+
+
+async def preguntar_siguiente_categoria(context: ContextTypes.DEFAULT_TYPE, chat_id: int, telegram_id: int) -> None:
+    """Muestra la pregunta del primer gasto en cola, sin sacarlo todavía —
+    se saca cuando el usuario responde (ver handle_callback, 'catq_')."""
+    cola = categoria_pendiente_cola.get(telegram_id) or []
+    if not cola:
+        return
+
+    item = cola[0]
+    usuario_id = obtener_o_crear_usuario(telegram_id)
+    opciones = list(catalogo("gasto", usuario_id).keys())
+
+    filas = [
+        [InlineKeyboardButton(c, callback_data=f"catq_{c}") for c in opciones[i:i + 3]]
+        for i in range(0, len(opciones), 3)
+    ]
+
+    await context.bot.send_message(
+        chat_id=chat_id,
+        text=(
+            "¿En qué categoría entra este gasto?\n\n"
+            f"💰 S/ {item['monto']:.2f} — {item['descripcion']}"
+        ),
+        reply_markup=InlineKeyboardMarkup(filas),
     )
+
+
+async def _procesar_y_guardar_gastos(update, context, usuario_id, mensaje):
+    """Extrae gastos del mensaje, guarda, y pregunta solo lo que falte."""
+    from datetime import datetime
+    cuentas = obtener_cuentas(usuario_id)
+    nombres_cuentas = [c[1] for c in cuentas]
+
+    await update.message.reply_text("⏳ Analizando tus gastos...")
+    gastos, fecha_str = extraer_gastos(mensaje, nombres_cuentas, usuario_id)
+
+    if not gastos:
+        await update.message.reply_text(
+            "⚠️ No pude identificar gastos en tu mensaje.\n"
+            "Intenta ser más específico:\n"
+            "_\"Gasté 50 soles en almuerzo y 20 en taxi\"_",
+            parse_mode="Markdown", reply_markup=menu_principal()
+        )
+        return
+
+    try:
+        fecha_dt = datetime.strptime(fecha_str, "%Y-%m-%d")
+    except Exception:
+        fecha_dt = None
+
+    hoy = datetime.now().strftime("%Y-%m-%d")
+    es_fecha_distinta = fecha_str and fecha_str != hoy
+    telegram_id = update.message.from_user.id
+
+    resumen_texto = "✅ *Gastos registrados:*\n\n"
+    total = 0
+    falta_medio = False
+    for gasto in gastos:
+        monto = gasto.get("monto", 0)
+        descripcion = gasto.get("descripcion", "Sin descripción")
+        categoria = gasto.get("categoria", "Otros")
+        medio = gasto.get("medio") or "Manual"
+        if medio == "Manual":
+            falta_medio = True
+        cuenta_origen_str = gasto.get("cuenta_origen", "Principal")
+        cuenta_origen_id = obtener_cuenta_por_nombre(usuario_id, cuenta_origen_str) or obtener_cuenta_principal(usuario_id)
+
+        emoji = EMOJIS_CATEGORIA.get(categoria, "📦")
+        trans_id = guardar_transaccion(
+            usuario_id, monto=monto, medio=medio,
+            descripcion=descripcion, categoria=categoria,
+            destinatario="—", fecha_voucher="—",
+            fecha=fecha_dt, cuenta_id=cuenta_origen_id
+        )
+        if categoria == "Otros":
+            encolar_pregunta_categoria(telegram_id, trans_id, monto, descripcion)
+        resumen_texto += f"{emoji} S/ {monto:.2f} — {descripcion} _{categoria}_\n"
+        total += float(monto)
+
+    resumen_texto += f"\n💰 *Total registrado: S/ {total:.2f}*"
+    if es_fecha_distinta:
+        fecha_legible = fecha_dt.strftime("%d/%m/%Y") if fecha_dt else fecha_str
+        resumen_texto += f"\n📅 Fecha registrada: *{fecha_legible}*"
+
+    await update.message.reply_text(resumen_texto, parse_mode="Markdown")
+
+    # Medio y categoría son preguntas independientes: si faltan las dos, se
+    # mandan las dos — el usuario responde en el orden que quiera.
+    if falta_medio:
+        await update.message.reply_text(
+            "¿Con qué medio pagaste los que no especificaste?",
+            reply_markup=teclado_medio_gasto(),
+        )
+    if categoria_pendiente_cola.get(telegram_id):
+        await preguntar_siguiente_categoria(context, update.effective_chat.id, telegram_id)
 
 
 # ── Recibir descripción después de INICIAR_REGISTRO ─────────────────────────
@@ -381,7 +432,7 @@ async def handle_descripcion_manual(update: Update, context: ContextTypes.DEFAUL
 
     del registro_manual_pendiente[telegram_id]
     usuario_id = obtener_o_crear_usuario(telegram_id)
-    await _procesar_y_guardar_gastos(update, usuario_id, mensaje)
+    await _procesar_y_guardar_gastos(update, context, usuario_id, mensaje)
 
 
 # ── Procesar imagen ─────────────────────────────────────────────────────────
@@ -934,6 +985,25 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             query.message.text.replace("\n\n¿Con qué medio pagaste?", f"\n\n📱 Medio: *{medio}*"),
             parse_mode="Markdown", reply_markup=menu_principal()
         )
+
+    # ── Respuesta a la cola de preguntas de categoría ──────────────────
+    elif accion.startswith("catq_"):
+        categoria_elegida = accion[len("catq_"):]
+        telegram_id_cb = query.from_user.id
+        cola = categoria_pendiente_cola.get(telegram_id_cb) or []
+        if not cola:
+            await safe_edit(query, "Esa pregunta ya no está activa.", reply_markup=menu_principal())
+        else:
+            item = cola.pop(0)
+            editar_transaccion(item["id"], usuario_id, item["monto"], item["descripcion"], categoria_elegida)
+            await safe_edit(
+                query,
+                f"✅ Categoría actualizada: *{categoria_elegida}*\n"
+                f"💰 S/ {item['monto']:.2f} — {item['descripcion']}",
+                parse_mode="Markdown",
+            )
+            if cola:
+                await preguntar_siguiente_categoria(context, query.message.chat_id, telegram_id_cb)
 
     # ── Eliminar transacción ───────────────────────────────────────────
     elif accion.startswith("eliminar_"):
