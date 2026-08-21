@@ -546,3 +546,27 @@ def desvincular_web(usuario_id: int) -> bool:
             borrados = cur.rowcount
             conn.commit()
             return borrados > 0
+
+
+def obtener_montos_fecha_rango(usuario_id: int, desde: str, hasta: str) -> list[tuple]:
+    """(monto, fecha 'YYYY-MM-DD') de gastos e ingresos del usuario en el rango.
+
+    Se compara contra las dos tablas, no solo gastos: si ya existe un ingreso con
+    ese mismo monto y fecha, también vale la pena que el checklist lo marque
+    como sospechoso — es al usuario a quien le toca decidir si es coincidencia.
+    """
+    with db_pool.connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT monto::numeric, to_char(fecha, 'YYYY-MM-DD') AS f
+                FROM transacciones
+                WHERE usuario_id=%s AND fecha::date BETWEEN %s AND %s
+                UNION ALL
+                SELECT monto::numeric, to_char(fecha, 'YYYY-MM-DD') AS f
+                FROM ingresos
+                WHERE usuario_id=%s AND fecha::date BETWEEN %s AND %s
+                """,
+                (usuario_id, desde, hasta, usuario_id, desde, hasta),
+            )
+            return [(float(m), f) for m, f in cur.fetchall()]
