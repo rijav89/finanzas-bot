@@ -60,6 +60,7 @@ from db import (
     desvincular_web,
 )
 from ocr import procesar_voucher
+from audio import transcribir_audio
 from categorias import clasificar_gasto, clasificar_ingreso, catalogo
 from gastos_manual import detectar_intencion, extraer_gastos, extraer_ingreso, extraer_edicion, extraer_transferencia
 from graficos import generar_grafico_categorias, generar_grafico_resumen
@@ -433,6 +434,54 @@ async def handle_descripcion_manual(update: Update, context: ContextTypes.DEFAUL
     del registro_manual_pendiente[telegram_id]
     usuario_id = obtener_o_crear_usuario(telegram_id)
     await _procesar_y_guardar_gastos(update, context, usuario_id, mensaje)
+
+
+# ── Procesar nota de voz ─────────────────────────────────────────────────
+
+async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Transcribe la nota de voz y la manda por el mismo camino que un gasto
+    escrito. Por ahora solo gastos — de "recibí 200" por voz no hay ejemplo
+    pedido, y ampliarlo es agregar un elif más adelante, no un flujo nuevo."""
+    voice = update.message.voice
+    if voice.duration > 120:
+        await update.message.reply_text(
+            "⚠️ La nota es muy larga (máximo 2 minutos). Grábala más corta o escribe el gasto.",
+            reply_markup=menu_principal()
+        )
+        return
+
+    file = await voice.get_file()
+    file_path = f"temp_voice_{update.message.message_id}.ogg"
+    await file.download_to_drive(file_path)
+
+    try:
+        await update.message.reply_text("🎙️ Escuchando...")
+        texto = transcribir_audio(file_path)
+    finally:
+        if os.path.exists(file_path):
+            os.remove(file_path)
+
+    if not texto:
+        await update.message.reply_text(
+            "⚠️ No pude entender el audio. Intenta de nuevo o escribe el gasto.",
+            reply_markup=menu_principal()
+        )
+        return
+
+    await update.message.reply_text(f"🗣️ Te escuché decir:\n_\"{texto}\"_", parse_mode="Markdown")
+
+    telegram_id = update.message.from_user.id
+    usuario_id = obtener_o_crear_usuario(telegram_id)
+    intencion = detectar_intencion(texto)
+
+    if intencion == "REGISTRAR_GASTOS":
+        await _procesar_y_guardar_gastos(update, context, usuario_id, texto)
+    else:
+        await update.message.reply_text(
+            "Por ahora las notas de voz solo registran gastos. "
+            "Para otras acciones, escríbeme o usa el menú.",
+            reply_markup=menu_principal()
+        )
 
 
 # ── Procesar imagen ─────────────────────────────────────────────────────────
@@ -1471,6 +1520,7 @@ def main():
     app.add_handler(conv_ingreso)
     app.add_handler(conv_pago_fijo)
     app.add_handler(conv_nueva_cuenta)
+    app.add_handler(MessageHandler(filters.VOICE, handle_voice))
     app.add_handler(CallbackQueryHandler(handle_callback))
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("cuentas", lambda update, ctx: mis_cuentas_cmd(update, ctx)))
