@@ -982,7 +982,9 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         medio = accion.replace("medio_", "")
         actualizar_medio_ultimas(usuario_id, medio)
         await safe_edit(query,
-            query.message.text.replace("\n\n¿Con qué medio pagaste?", f"\n\n📱 Medio: *{medio}*"),
+            query.message.text.replace(
+                "¿Con qué medio pagaste los que no especificaste?", f"📱 Medio: *{medio}*"
+            ),
             parse_mode="Markdown", reply_markup=menu_principal()
         )
 
