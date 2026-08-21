@@ -493,50 +493,72 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await file.download_to_drive(file_path)
 
     try:
-        await update.message.reply_text("⏳ Leyendo texto del voucher...")
-        monto, medio, destinatario, fecha = procesar_voucher(file_path)
-
-        if monto == "No detectado":
-            await update.message.reply_text(
-                "⚠️ No pude leer el monto del voucher.\n"
-                "Asegúrate de que la imagen sea nítida.",
-                reply_markup=menu_principal()
-            )
-            os.remove(file_path)
-            return ConversationHandler.END
-
-        descripcion = update.message.caption
-        telegram_id = update.message.from_user.id
-
-        if descripcion:
-            await registrar_transaccion(update, telegram_id, monto, medio, destinatario, fecha, descripcion)
-            os.remove(file_path)
-            return ConversationHandler.END
-        else:
-            datos_pendientes[telegram_id] = {
-                "monto": monto, "medio": medio,
-                "destinatario": destinatario, "fecha": fecha,
-            }
-            await update.message.reply_text(
-                f"📋 *Voucher leído:*\n"
-                f"💰 Monto: S/ {monto}\n"
-                f"📱 Medio: {medio}\n"
-                f"👤 Destinatario: {destinatario}\n\n"
-                f"¿A qué correspondió este gasto? Escribe una descripción breve.\n"
-                f"_(Ej: almuerzo con amigos, uber al trabajo, consulta médica)_",
-                parse_mode="Markdown"
-            )
-            os.remove(file_path)
-            return ESPERANDO_DESCRIPCION
-
+        await update.message.reply_text("⏳ Leyendo la imagen...")
+        movimientos = procesar_voucher(file_path)
     except Exception as e:
         await update.message.reply_text(
             f"❌ Error al procesar la imagen: {e}",
             reply_markup=menu_principal()
         )
+        return ConversationHandler.END
+    finally:
         if os.path.exists(file_path):
             os.remove(file_path)
+
+    movimientos = [m for m in movimientos if m.get("monto") != "No detectado"]
+    if not movimientos:
+        await update.message.reply_text(
+            "⚠️ No pude leer ningún monto en la imagen.\n"
+            "Asegúrate de que sea nítida.",
+            reply_markup=menu_principal()
+        )
         return ConversationHandler.END
+
+    if len(movimientos) == 1:
+        return await _procesar_voucher_simple(update, context, movimientos[0])
+
+    return await _iniciar_importacion(update, movimientos)
+
+
+async def _procesar_voucher_simple(update, context, item: dict):
+    """Un solo movimiento leído: mismo comportamiento que el bot ya tenía para
+    un voucher de Yape/Plin/depósito."""
+    monto = item["monto"]
+    medio = item["medio"]
+    destinatario = item["destinatario"]
+    fecha = item["fecha"]
+
+    descripcion = update.message.caption
+    telegram_id = update.message.from_user.id
+
+    if descripcion:
+        await registrar_transaccion(update, context, telegram_id, monto, medio, destinatario, fecha, descripcion)
+        return ConversationHandler.END
+
+    datos_pendientes[telegram_id] = {
+        "monto": monto, "medio": medio,
+        "destinatario": destinatario, "fecha": fecha,
+    }
+    await update.message.reply_text(
+        f"📋 *Voucher leído:*\n"
+        f"💰 Monto: S/ {monto}\n"
+        f"📱 Medio: {medio}\n"
+        f"👤 Destinatario: {destinatario}\n\n"
+        f"¿A qué correspondió este gasto? Escribe una descripción breve.\n"
+        f"_(Ej: almuerzo con amigos, uber al trabajo, consulta médica)_",
+        parse_mode="Markdown"
+    )
+    return ESPERANDO_DESCRIPCION
+
+
+async def _iniciar_importacion(update, movimientos: list[dict]):
+    """Placeholder — el checklist real llega en la Task 8 de este plan."""
+    await update.message.reply_text(
+        f"📋 Leí {len(movimientos)} movimientos en la imagen. "
+        "La importación por lotes todavía no está lista.",
+        reply_markup=menu_principal(),
+    )
+    return ConversationHandler.END
 
 
 # ── Recibir descripción pendiente ───────────────────────────────────────────
@@ -554,7 +576,7 @@ async def handle_descripcion(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
     datos = datos_pendientes.pop(telegram_id)
     await registrar_transaccion(
-        update, telegram_id,
+        update, context, telegram_id,
         datos["monto"], datos["medio"], datos["destinatario"], datos["fecha"],
         descripcion
     )
@@ -563,12 +585,12 @@ async def handle_descripcion(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
 # ── Registrar transacción desde voucher ─────────────────────────────────────
 
-async def registrar_transaccion(update, telegram_id, monto, medio, destinatario, fecha, descripcion):
+async def registrar_transaccion(update, context, telegram_id, monto, medio, destinatario, fecha, descripcion):
     try:
         usuario_id = obtener_o_crear_usuario(telegram_id)
         categoria = clasificar_gasto(descripcion, usuario_id)
         emoji = EMOJIS_CATEGORIA.get(categoria, "📦")
-        guardar_transaccion(usuario_id, monto, medio, descripcion, categoria, destinatario, fecha)
+        trans_id = guardar_transaccion(usuario_id, monto, medio, descripcion, categoria, destinatario, fecha)
 
         # Escapar caracteres especiales de Markdown en campos dinámicos
         def esc(text):
@@ -588,6 +610,10 @@ async def registrar_transaccion(update, telegram_id, monto, medio, destinatario,
             parse_mode="Markdown",
             reply_markup=menu_principal()
         )
+
+        if categoria == "Otros":
+            encolar_pregunta_categoria(telegram_id, trans_id, monto, descripcion)
+            await preguntar_siguiente_categoria(context, update.effective_chat.id, telegram_id)
     except Exception as e:
         await update.message.reply_text(f"❌ Error al registrar: {e}", reply_markup=menu_principal())
 
