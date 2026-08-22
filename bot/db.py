@@ -165,6 +165,30 @@ def actualizar_medio_ultimas(usuario_id: int, medio: str):
             )
             conn.commit()
 
+def actualizar_medio_transacciones(usuario_id: int, trans_ids, medio: str) -> int:
+    """Fija el medio de transacciones concretas y devuelve cuántas filas tocó.
+
+    Reemplaza a `actualizar_medio_ultimas` en los flujos que ya conocen los ids
+    que acaban de insertar: la ventana de "los últimos 5 minutos" no alcanzaba
+    ningún gasto con fecha de ayer ni ninguna fila importada de un historial,
+    así que la respuesta del usuario se perdía en silencio.
+
+    El id nunca se usa solo: siempre va acotado al usuario_id.
+    """
+    ids = [int(i) for i in (trans_ids or [])]
+    if not ids:
+        return 0
+    with db_pool.connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "UPDATE transacciones SET medio=%s WHERE usuario_id=%s AND id = ANY(%s)",
+                (medio, usuario_id, ids),
+            )
+            filas = cur.rowcount
+            conn.commit()
+            return filas
+
+
 def actualizar_medio_transaccion(trans_id: int, usuario_id: int, medio: str):
     with db_pool.connection() as conn:
         with conn.cursor() as cur:

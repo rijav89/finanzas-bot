@@ -6,7 +6,8 @@ Usa Qwen VL OCR (Alibaba Cloud) con OpenAI-compatible API.
 import json
 import base64
 import pathlib
-from datetime import date
+import re
+from datetime import date, datetime
 
 from openai import OpenAI
 from config import DASHSCOPE_API_KEY, QWEN_BASE_URL, QWEN_MODEL_OCR
@@ -97,16 +98,87 @@ def procesar_voucher(file_path: str) -> list[dict]:
         return []
 
 
+MONTO_NO_DETECTADO = "No detectado"
+
+# El prompt pide YYYY-MM-DD, pero un modelo no es un parser: devuelve
+# "15/08/2026" o "2026-8-5" cuando eso es lo que dice la imagen. Esa fecha
+# termina en un BETWEEN de SQL y en un strptime, así que se normaliza acá —
+# es el único punto por el que pasa todo lo que sale del OCR.
+_FORMATOS_FECHA = (
+    "%Y-%m-%d",   # el formato pedido (tolera "2026-8-5")
+    "%d/%m/%Y",   # el formato peruano de toda la vida
+    "%d-%m-%Y",
+    "%Y/%m/%d",
+    "%d/%m/%y",
+)
+
+
+def normalizar_fecha(valor) -> str:
+    """Devuelve una fecha YYYY-MM-DD siempre válida.
+
+    Si no se puede interpretar, se asume hoy — el mismo criterio que ya tenía
+    el caso "No detectada" (sin corrección de año ambiguo: fuera de alcance).
+    """
+    hoy = date.today().strftime("%Y-%m-%d")
+    if valor is None:
+        return hoy
+    texto = str(valor).strip()
+    if not texto or texto == "No detectada":
+        return hoy
+    for formato in _FORMATOS_FECHA:
+        try:
+            return datetime.strptime(texto, formato).strftime("%Y-%m-%d")
+        except ValueError:
+            continue
+    return hoy
+
+
+def normalizar_monto(valor) -> str:
+    """Devuelve el monto como string apto para float(), o "No detectado".
+
+    El modelo tiene la costumbre de copiar lo que ve: "S/ 85.50", "1,250.00",
+    "1.250,00". Aguas abajo hay tres float() sin protección (dedupe, el teclado
+    del checklist y el INSERT), así que la limpieza va acá.
+    """
+    if valor is None:
+        return MONTO_NO_DETECTADO
+    texto = str(valor).strip()
+    if not texto:
+        return MONTO_NO_DETECTADO
+
+    limpio = re.sub(r"[^0-9,.\-]", "", texto)   # fuera "S/", espacios, letras
+    negativo = limpio.startswith("-")
+    limpio = limpio.replace("-", "")
+    if not any(c.isdigit() for c in limpio):
+        return MONTO_NO_DETECTADO
+
+    if "," in limpio and "." in limpio:
+        # Conviven los dos: el que va más a la derecha es el decimal.
+        corte = max(limpio.rfind(","), limpio.rfind("."))
+        limpio = re.sub(r"[.,]", "", limpio[:corte]) + "." + re.sub(r"[.,]", "", limpio[corte + 1:])
+    elif "," in limpio:
+        cola = limpio.rsplit(",", 1)[1]
+        cabeza = limpio[:limpio.rfind(",")]
+        if len(cola) == 3 and cabeza:
+            limpio = limpio.replace(",", "")     # "1,250" son mil doscientos
+        else:
+            limpio = limpio.replace(",", ".")    # "85,50" son ochenta y cinco con cincuenta
+    elif limpio.count(".") > 1:
+        corte = limpio.rfind(".")
+        limpio = limpio[:corte].replace(".", "") + limpio[corte:]
+
+    try:
+        numero = float(limpio)
+    except ValueError:
+        return MONTO_NO_DETECTADO
+    return f"{-numero if negativo else numero:.2f}"
+
+
 def _normalizar(m: dict) -> dict:
-    fecha = m.get("fecha") or "No detectada"
-    if fecha == "No detectada":
-        # Sin corrección de año ambiguo (fuera de alcance): si no hay fecha
-        # legible, se asume hoy y el usuario corrige a mano si hace falta.
-        fecha = date.today().strftime("%Y-%m-%d")
     return {
-        "monto": m.get("monto") or "No detectado",
+        "monto": normalizar_monto(m.get("monto")),
         "medio": m.get("medio") or "No identificado",
         "destinatario": m.get("destinatario") or "No detectado",
         "descripcion": m.get("descripcion") or "",
-        "fecha": fecha,
+        "fecha": normalizar_fecha(m.get("fecha")),
     }

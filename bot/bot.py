@@ -7,6 +7,7 @@ bot.py — FinanzasBot v3.0
 
 import os
 import io
+import secrets
 import warnings
 from telegram.warnings import PTBUserWarning
 
@@ -47,7 +48,7 @@ from db import (
     obtener_pagos_fijos,
     eliminar_pago_fijo,
     obtener_pagos_fijos_del_dia,
-    actualizar_medio_ultimas,
+    actualizar_medio_transacciones,
     actualizar_medio_transaccion,
     actualizar_medio_ingreso_reciente,
     obtener_cuentas,
@@ -89,7 +90,8 @@ edicion_pendiente        = {}
 transferencia_pendiente  = {}
 cuenta_pendiente         = {}
 categoria_pendiente_cola = {}  # telegram_id -> [{"id", "monto", "descripcion"}, ...]
-importacion_pendiente = {}  # telegram_id -> {"items": [...], "cuenta_id": int}
+importacion_pendiente = {}  # telegram_id -> {"items": [...], "token": str}
+medio_pendiente_ids = {}  # telegram_id -> [trans_id, ...] con medio="Manual" a confirmar
 
 EMOJIS_CATEGORIA = {
     "Comida":          "🍽️",
@@ -340,7 +342,7 @@ async def preguntar_siguiente_categoria(context: ContextTypes.DEFAULT_TYPE, chat
     opciones = list(catalogo("gasto", usuario_id).keys())
 
     filas = [
-        [InlineKeyboardButton(c, callback_data=f"catq_{c}") for c in opciones[i:i + 3]]
+        [InlineKeyboardButton(c, callback_data=f"catq_{item['id']}_{c}") for c in opciones[i:i + 3]]
         for i in range(0, len(opciones), 3)
     ]
 
@@ -384,6 +386,7 @@ async def _procesar_y_guardar_gastos(update, context, usuario_id, mensaje):
     resumen_texto = "✅ *Gastos registrados:*\n\n"
     total = 0
     falta_medio = False
+    trans_ids_manual = []
     for gasto in gastos:
         monto = gasto.get("monto", 0)
         descripcion = gasto.get("descripcion", "Sin descripción")
@@ -401,6 +404,8 @@ async def _procesar_y_guardar_gastos(update, context, usuario_id, mensaje):
             destinatario="—", fecha_voucher="—",
             fecha=fecha_dt, cuenta_id=cuenta_origen_id
         )
+        if medio == "Manual":
+            trans_ids_manual.append(trans_id)
         if categoria == "Otros":
             encolar_pregunta_categoria(telegram_id, trans_id, monto, descripcion)
         resumen_texto += f"{emoji} S/ {monto:.2f} — {descripcion} _{categoria}_\n"
@@ -416,6 +421,7 @@ async def _procesar_y_guardar_gastos(update, context, usuario_id, mensaje):
     # Medio y categoría son preguntas independientes: si faltan las dos, se
     # mandan las dos — el usuario responde en el orden que quiera.
     if falta_medio:
+        medio_pendiente_ids.setdefault(telegram_id, []).extend(trans_ids_manual)
         await update.message.reply_text(
             "¿Con qué medio pagaste los que no especificaste?",
             reply_markup=teclado_medio_gasto(),
@@ -558,23 +564,34 @@ async def _iniciar_importacion(update, movimientos: list[dict]):
     """Arma el checklist: dedup contra el historial, todo destildado lo que
     pinta a repetido, todo lo demás tildado por defecto."""
     telegram_id = update.message.from_user.id
-    usuario_id = obtener_o_crear_usuario(telegram_id)
+    try:
+        usuario_id = obtener_o_crear_usuario(telegram_id)
 
-    fechas = [m["fecha"] for m in movimientos]
-    existentes = obtener_montos_fecha_rango(usuario_id, min(fechas), max(fechas))
-    duplicados = marcar_duplicados(movimientos, existentes)
+        fechas = [m["fecha"] for m in movimientos]
+        existentes = obtener_montos_fecha_rango(usuario_id, min(fechas), max(fechas))
+        duplicados = marcar_duplicados(movimientos, existentes)
 
-    items = [
-        {**m, "duplicado": dup, "marcado": not dup}
-        for m, dup in zip(movimientos, duplicados)
-    ]
-    importacion_pendiente[telegram_id] = {"items": items}
+        items = [
+            {**m, "duplicado": dup, "marcado": not dup}
+            for m, dup in zip(movimientos, duplicados)
+        ]
+        # El token distingue esta importación de una anterior/posterior del mismo
+        # usuario: sin él, los botones de un checklist viejo (mensaje sin borrar
+        # en Telegram) podrían tocar por índice los items de uno nuevo.
+        token = secrets.token_hex(4)
+        importacion_pendiente[telegram_id] = {"items": items, "token": token}
 
-    await update.message.reply_text(
-        _texto_checklist(items),
-        parse_mode="Markdown",
-        reply_markup=_teclado_checklist(items),
-    )
+        await update.message.reply_text(
+            _texto_checklist(items),
+            parse_mode="Markdown",
+            reply_markup=_teclado_checklist(items, token),
+        )
+    except Exception as e:
+        importacion_pendiente.pop(telegram_id, None)
+        await update.message.reply_text(
+            f"❌ Error al preparar la importación: {e}",
+            reply_markup=menu_principal(),
+        )
     return ConversationHandler.END
 
 
@@ -587,7 +604,7 @@ def _texto_checklist(items: list[dict]) -> str:
     return texto
 
 
-def _teclado_checklist(items: list[dict]) -> InlineKeyboardMarkup:
+def _teclado_checklist(items: list[dict], token: str) -> InlineKeyboardMarkup:
     filas = []
     for i, it in enumerate(items):
         check = "☑️" if it["marcado"] else "☐"
@@ -595,12 +612,12 @@ def _teclado_checklist(items: list[dict]) -> InlineKeyboardMarkup:
         etiqueta = f"{check} {it['fecha'][5:]} S/ {float(it['monto']):.2f} — {desc}"
         if it["duplicado"]:
             etiqueta += " ⚠️"
-        filas.append([InlineKeyboardButton(etiqueta, callback_data=f"impchk_toggle_{i}")])
+        filas.append([InlineKeyboardButton(etiqueta, callback_data=f"impchk_toggle_{token}_{i}")])
 
     marcados = sum(1 for it in items if it["marcado"])
     filas.append([
-        InlineKeyboardButton(f"✅ Registrar los {marcados} marcados", callback_data="impchk_confirmar"),
-        InlineKeyboardButton("❌ Cancelar", callback_data="impchk_cancelar"),
+        InlineKeyboardButton(f"✅ Registrar los {marcados} marcados", callback_data=f"impchk_confirmar_{token}"),
+        InlineKeyboardButton("❌ Cancelar", callback_data=f"impchk_cancelar_{token}"),
     ])
     return InlineKeyboardMarkup(filas)
 
@@ -615,55 +632,65 @@ async def _guardar_importacion(context, chat_id: int, telegram_id: int, usuario_
         await context.bot.send_message(chat_id=chat_id, text="No marcaste ningún movimiento.")
         return
 
-    cuenta_id = obtener_cuenta_principal(usuario_id)
-    total = 0
-    falta_medio = False
+    try:
+        cuenta_id = obtener_cuenta_principal(usuario_id)
+        total = 0
+        falta_medio = False
+        trans_ids_manual = []
 
-    for it in marcados:
-        monto = it["monto"]
-        if it["descripcion"]:
-            descripcion = it["descripcion"]
-        elif it["destinatario"] != "No detectado":
-            descripcion = f"Yape/Plin a {it['destinatario']}"
-        else:
-            descripcion = "Importado de captura"
-        categoria = clasificar_gasto(descripcion, usuario_id)
-        medio = it["medio"] if it["medio"] != "No identificado" else "Manual"
-        if medio == "Manual":
-            falta_medio = True
+        for it in marcados:
+            monto = it["monto"]
+            if it["descripcion"]:
+                descripcion = it["descripcion"]
+            elif it["destinatario"] != "No detectado":
+                descripcion = f"Yape/Plin a {it['destinatario']}"
+            else:
+                descripcion = "Importado de captura"
+            categoria = clasificar_gasto(descripcion, usuario_id)
+            medio = it["medio"] if it["medio"] != "No identificado" else "Manual"
+            if medio == "Manual":
+                falta_medio = True
 
-        try:
-            fecha_dt = datetime.strptime(it["fecha"], "%Y-%m-%d")
-        except Exception:
-            fecha_dt = None
+            try:
+                fecha_dt = datetime.strptime(it["fecha"], "%Y-%m-%d")
+            except Exception:
+                fecha_dt = None
 
-        trans_id = guardar_transaccion(
-            usuario_id, monto=monto, medio=medio,
-            descripcion=descripcion, categoria=categoria,
-            destinatario=it["destinatario"], fecha_voucher=it["fecha"],
-            fecha=fecha_dt, cuenta_id=cuenta_id,
-        )
-        if categoria == "Otros":
-            encolar_pregunta_categoria(telegram_id, trans_id, monto, descripcion)
-        total += float(monto)
+            trans_id = guardar_transaccion(
+                usuario_id, monto=monto, medio=medio,
+                descripcion=descripcion, categoria=categoria,
+                destinatario=it["destinatario"], fecha_voucher=it["fecha"],
+                fecha=fecha_dt, cuenta_id=cuenta_id,
+            )
+            if medio == "Manual":
+                trans_ids_manual.append(trans_id)
+            if categoria == "Otros":
+                encolar_pregunta_categoria(telegram_id, trans_id, monto, descripcion)
+            total += float(monto)
 
-    await context.bot.send_message(
-        chat_id=chat_id,
-        text=(
-            f"✅ Registré {len(marcados)} movimientos por S/ {total:.2f}.\n\n"
-            "_No importé ingresos de esta captura, si había — cárgalos desde el menú._"
-        ),
-        parse_mode="Markdown",
-    )
-
-    if falta_medio:
         await context.bot.send_message(
             chat_id=chat_id,
-            text="¿Con qué medio pagaste los que no especificaste?",
-            reply_markup=teclado_medio_gasto(),
+            text=(
+                f"✅ Registré {len(marcados)} movimientos por S/ {total:.2f}.\n\n"
+                "_No importé ingresos de esta captura, si había — cárgalos desde el menú._"
+            ),
+            parse_mode="Markdown",
         )
-    if categoria_pendiente_cola.get(telegram_id):
-        await preguntar_siguiente_categoria(context, chat_id, telegram_id)
+
+        if falta_medio:
+            medio_pendiente_ids.setdefault(telegram_id, []).extend(trans_ids_manual)
+            await context.bot.send_message(
+                chat_id=chat_id,
+                text="¿Con qué medio pagaste los que no especificaste?",
+                reply_markup=teclado_medio_gasto(),
+            )
+        if categoria_pendiente_cola.get(telegram_id):
+            await preguntar_siguiente_categoria(context, chat_id, telegram_id)
+    except Exception as e:
+        await context.bot.send_message(
+            chat_id=chat_id,
+            text=f"❌ Error al guardar la importación: {e}",
+        )
 
 
 # ── Recibir descripción pendiente ───────────────────────────────────────────
@@ -695,7 +722,18 @@ async def registrar_transaccion(update, context, telegram_id, monto, medio, dest
         usuario_id = obtener_o_crear_usuario(telegram_id)
         categoria = clasificar_gasto(descripcion, usuario_id)
         emoji = EMOJIS_CATEGORIA.get(categoria, "📦")
-        trans_id = guardar_transaccion(usuario_id, monto, medio, descripcion, categoria, destinatario, fecha)
+        # guardar_transaccion es posicional (destinatario, fecha_voucher, fecha, ...):
+        # pasar `fecha` por posición la dejaba en fecha_voucher (cosmético) y el
+        # campo `fecha` real (el que usan reportes y dedupe) quedaba en NULL.
+        try:
+            fecha_dt = datetime.strptime(fecha, "%Y-%m-%d")
+        except (TypeError, ValueError):
+            fecha_dt = None
+        trans_id = guardar_transaccion(
+            usuario_id, monto=monto, medio=medio, descripcion=descripcion,
+            categoria=categoria, destinatario=destinatario, fecha_voucher=fecha,
+            fecha=fecha_dt,
+        )
 
         # Escapar caracteres especiales de Markdown en campos dinámicos
         def esc(text):
@@ -1160,7 +1198,9 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # ── Selección de medio de pago (gastos) ───────────────────────────
     elif accion.startswith("medio_"):
         medio = accion.replace("medio_", "")
-        actualizar_medio_ultimas(usuario_id, medio)
+        telegram_id_cb = query.from_user.id
+        ids = medio_pendiente_ids.pop(telegram_id_cb, [])
+        actualizar_medio_transacciones(usuario_id, ids, medio)
         await safe_edit(query,
             query.message.text.replace(
                 "¿Con qué medio pagaste los que no especificaste?", f"📱 Medio: *{medio}*"
@@ -1170,10 +1210,14 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # ── Respuesta a la cola de preguntas de categoría ──────────────────
     elif accion.startswith("catq_"):
-        categoria_elegida = accion[len("catq_"):]
+        resto = accion[len("catq_"):]
+        trans_id_str, _, categoria_elegida = resto.partition("_")
         telegram_id_cb = query.from_user.id
         cola = categoria_pendiente_cola.get(telegram_id_cb) or []
-        if not cola:
+        # El id viaja en el callback_data: si no coincide con el primero de la
+        # cola, es un botón de una pregunta vieja (ya respondida o de otro
+        # registro) y no debe pisar el item que está activo ahora.
+        if not cola or not trans_id_str.isdigit() or cola[0]["id"] != int(trans_id_str):
             await safe_edit(query, "Esa pregunta ya no está activa.", reply_markup=menu_principal())
         else:
             item = cola.pop(0)
@@ -1189,31 +1233,40 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # ── Checklist de importación por lotes ──────────────────────────────
     elif accion.startswith("impchk_toggle_"):
-        idx = int(accion[len("impchk_toggle_"):])
+        resto = accion[len("impchk_toggle_"):]
+        token, _, idx_str = resto.rpartition("_")
         telegram_id_cb = query.from_user.id
         estado = importacion_pendiente.get(telegram_id_cb)
-        if not estado or idx >= len(estado["items"]):
+        if not estado or estado.get("token") != token or not idx_str.isdigit() or int(idx_str) >= len(estado["items"]):
             await query.answer("Esta importación ya no está activa.", show_alert=True)
         else:
+            idx = int(idx_str)
             estado["items"][idx]["marcado"] = not estado["items"][idx]["marcado"]
             await safe_edit(
                 query,
                 _texto_checklist(estado["items"]),
                 parse_mode="Markdown",
-                reply_markup=_teclado_checklist(estado["items"]),
+                reply_markup=_teclado_checklist(estado["items"], token),
             )
 
-    elif accion == "impchk_cancelar":
+    elif accion.startswith("impchk_cancelar_"):
+        token = accion[len("impchk_cancelar_"):]
         telegram_id_cb = query.from_user.id
-        importacion_pendiente.pop(telegram_id_cb, None)
-        await safe_edit(query, "Importación cancelada.", reply_markup=menu_principal())
-
-    elif accion == "impchk_confirmar":
-        telegram_id_cb = query.from_user.id
-        estado = importacion_pendiente.pop(telegram_id_cb, None)
-        if not estado:
+        estado = importacion_pendiente.get(telegram_id_cb)
+        if not estado or estado.get("token") != token:
             await query.answer("Esta importación ya no está activa.", show_alert=True)
         else:
+            importacion_pendiente.pop(telegram_id_cb, None)
+            await safe_edit(query, "Importación cancelada.", reply_markup=menu_principal())
+
+    elif accion.startswith("impchk_confirmar_"):
+        token = accion[len("impchk_confirmar_"):]
+        telegram_id_cb = query.from_user.id
+        estado = importacion_pendiente.get(telegram_id_cb)
+        if not estado or estado.get("token") != token:
+            await query.answer("Esta importación ya no está activa.", show_alert=True)
+        else:
+            importacion_pendiente.pop(telegram_id_cb, None)
             await _guardar_importacion(context, query.message.chat_id, telegram_id_cb, usuario_id, estado["items"])
 
     # ── Eliminar transacción ───────────────────────────────────────────

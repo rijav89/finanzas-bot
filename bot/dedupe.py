@@ -20,7 +20,15 @@ def marcar_duplicados(movimientos: list[dict], existentes: list[tuple]) -> list[
     """
     resultado = []
     for m in movimientos:
-        monto = float(m.get("monto", 0))
+        try:
+            monto = float(m.get("monto", 0))
+        except (TypeError, ValueError):
+            # Un monto que no se puede leer no puede coincidir con nada, pero
+            # tampoco puede tumbar el lote entero: el usuario ve el movimiento
+            # tildado y decide él. (ocr.normalizar_monto ya limpia lo que entra
+            # por el camino normal; esto es el cinturón, no el tirante.)
+            resultado.append(False)
+            continue
         fecha = m.get("fecha")
         coincide = any(
             fecha == f_ex and abs(monto - m_ex) <= TOLERANCIA_MONTO
